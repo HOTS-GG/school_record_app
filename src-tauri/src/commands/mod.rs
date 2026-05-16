@@ -1,0 +1,27 @@
+pub mod activity;
+pub mod ai;
+pub mod area;
+pub mod chat;
+pub mod config;
+pub mod crypto;
+pub mod file;
+pub mod project;
+pub mod record;
+pub mod replace;
+pub mod snapshot;
+pub mod student;
+pub mod synonym;
+
+pub use activity::*;
+pub use ai::*;
+pub use area::*;
+pub use chat::*;
+pub use config::*;
+pub use crypto::*;
+pub use file::*;
+pub use project::*;
+pub use record::*;
+pub use replace::*;
+pub use snapshot::*;
+pub use student::*;
+pub use synonym::*;

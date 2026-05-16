@@ -1,0 +1,47 @@
+{
+  "name": "school-record-app",
+  "description": "All-in-One 학교생활기록부 에디터 — 교사를 위한 데스크톱 애플리케이션",
+  "author": "itmir913 (luminousky.com)",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "homepage": "https://luminousky.com/teacher-utility-kit/neis-editor/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itmir913/School-Record-App.git"
+  },
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:windows:portable": "tauri build --no-bundle",
+    "tauri:windows:installer": "tauri build --bundles nsis",
+    "tauri:macos": "tauri build --target universal-apple-darwin --bundles dmg",
+    "clean": "npm run clean:rust",
+    "clean:rust": "cargo clean --manifest-path src-tauri/Cargo.toml",
+    "test": "npm run test:rust && npm run test:ts",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:ts": "vitest run"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-opener": "^2",
+    "diff": "^9.0.0",
+    "exceljs": "^4.4.0",
+    "lucide-vue-next": "^1.0.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.13",
+    "vue-router": "^5.0.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@tauri-apps/cli": "^2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "tailwindcss": "^4.2.2",
+    "vite": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}
