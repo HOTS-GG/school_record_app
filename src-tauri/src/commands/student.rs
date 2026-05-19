@@ -24,7 +24,7 @@ pub fn get_students_impl(
 ) -> Result<Vec<StudentItem>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, grade, class_num, number, name, tags
+            "SELECT id, grade, class_num, number, name, tags, behavior
              FROM Student
              ORDER BY grade, class_num, number",
         )
@@ -39,6 +39,7 @@ pub fn get_students_impl(
                 row.get::<_, i64>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -46,7 +47,7 @@ pub fn get_students_impl(
         .map_err(|e| e.to_string())?;
 
     let mut students = Vec::with_capacity(rows.len());
-    for (id, grade, class_num, number, name, tags_raw) in rows {
+    for (id, grade, class_num, number, name, tags_raw, behavior) in rows {
         students.push(StudentItem {
             id,
             grade,
@@ -54,9 +55,34 @@ pub fn get_students_impl(
             number,
             name: maybe_decrypt(name, key)?,
             tags: parse_tags(tags_raw),
+            behavior,
         });
     }
     Ok(students)
+}
+
+pub fn get_student_behavior_impl(conn: &Connection, student_id: i64) -> Result<Option<String>, String> {
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT behavior FROM Student WHERE id = ?1",
+            rusqlite::params![student_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(raw)
+}
+
+pub fn set_student_behavior_impl(
+    conn: &Connection,
+    student_id: i64,
+    behavior: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE Student SET behavior = ?1 WHERE id = ?2",
+        rusqlite::params![behavior, student_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn get_student_tags_impl(conn: &Connection, student_id: i64) -> Result<Vec<String>, String> {
@@ -360,6 +386,28 @@ pub fn set_area_students(
         .as_ref()
         .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
     set_area_students_impl(conn, area_id, &student_ids)
+}
+
+#[tauri::command]
+pub fn get_student_behavior(student_id: i64, state: State<DbState>) -> Result<Option<String>, String> {
+    let guard = state.0.lock().unwrap();
+    let conn = guard
+        .as_ref()
+        .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+    get_student_behavior_impl(conn, student_id)
+}
+
+#[tauri::command]
+pub fn set_student_behavior(
+    student_id: i64,
+    behavior: Option<String>,
+    state: State<DbState>,
+) -> Result<(), String> {
+    let guard = state.0.lock().unwrap();
+    let conn = guard
+        .as_ref()
+        .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+    set_student_behavior_impl(conn, student_id, behavior.as_deref())
 }
 
 #[tauri::command]

@@ -37,7 +37,7 @@ pub fn get_area_grid_impl(
 
     let mut stmt = conn
         .prepare(
-            "SELECT s.id, s.grade, s.class_num, s.number, s.name, s.tags
+            "SELECT s.id, s.grade, s.class_num, s.number, s.name, s.tags, s.behavior
              FROM Student s
              JOIN AreaStudent as_ ON s.id = as_.student_id
              WHERE as_.area_id = ?1
@@ -54,6 +54,7 @@ pub fn get_area_grid_impl(
                 row.get::<_, i64>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -61,7 +62,7 @@ pub fn get_area_grid_impl(
         .map_err(|e| e.to_string())?;
 
     let mut students = Vec::with_capacity(raw_students.len());
-    for (id, grade, class_num, number, name, tags_raw) in raw_students {
+    for (id, grade, class_num, number, name, tags_raw, behavior) in raw_students {
         let tags = match tags_raw {
             Some(s) if !s.is_empty() => {
                 serde_json::from_str::<Vec<String>>(&s).unwrap_or_default()
@@ -75,6 +76,7 @@ pub fn get_area_grid_impl(
             number,
             name: maybe_decrypt(name, key)?,
             tags,
+            behavior,
         });
     }
 

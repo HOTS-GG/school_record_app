@@ -17,6 +17,23 @@ const sortedAreas = computed(() =>
     [...areaStore.areas].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
 )
 
+const ROLE_ORDER = ['homeroom', 'subject', 'common']
+const ROLE_LABELS = { homeroom: '담임 영역', subject: '교과 영역', common: '공통 영역' }
+
+const groupedAreas = computed(() => {
+  const groups = {}
+  for (const area of sortedAreas.value) {
+    const r = area.role || 'common'
+    if (!groups[r]) groups[r] = []
+    groups[r].push(area)
+  }
+  return ROLE_ORDER.filter(r => groups[r]?.length).map(r => ({
+    role: r,
+    label: ROLE_LABELS[r],
+    areas: groups[r],
+  }))
+})
+
 // 영역 편집 모달 상태
 const modalVisible = ref(false)
 const modalMode = ref('add')       // 'add' | 'edit'
@@ -70,16 +87,16 @@ function closeModal() {
   selectedArea.value = null
 }
 
-async function handleSaved({name, byteLimit, prompt, activityIds}) {
+async function handleSaved({name, byteLimit, prompt, role, activityIds}) {
   if (saving.value) return
   saving.value = true
   try {
     let areaId
     if (modalMode.value === 'add') {
-      areaId = await areaStore.createArea(name, byteLimit, prompt)
+      areaId = await areaStore.createArea(name, byteLimit, prompt, role)
     } else {
       areaId = selectedArea.value.id
-      await areaStore.updateArea(areaId, name, byteLimit, prompt)
+      await areaStore.updateArea(areaId, name, byteLimit, prompt, role)
     }
     await areaStore.setAreaActivities(areaId, activityIds)
     await activityStore.fetchActivities()  // ActivityDetail.areas 갱신
@@ -172,15 +189,23 @@ async function handleStudentSaved(studentIds) {
           </button>
         </div>
 
-        <!-- 카드 그리드 -->
-        <div v-else class="card-grid">
-          <AreaCard
-              v-for="area in sortedAreas"
-              :key="area.id"
-              :area="area"
-              @edit="openEditModal"
-              @assign-students="openStudentModal"
-          />
+        <!-- 카드 그리드 (역할 그룹별) -->
+        <div v-else class="area-groups">
+          <div v-for="group in groupedAreas" :key="group.role" class="area-group">
+            <div class="group-header">
+              <span class="group-label" :class="`group-label--${group.role}`">{{ group.label }}</span>
+              <span class="group-count">{{ group.areas.length }}개</span>
+            </div>
+            <div class="card-grid">
+              <AreaCard
+                  v-for="area in group.areas"
+                  :key="area.id"
+                  :area="area"
+                  @edit="openEditModal"
+                  @assign-students="openStudentModal"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -354,6 +379,58 @@ async function handleStudentSaved(studentIds) {
   font-size: 16px;
   color: var(--clr-text-subtle);
   margin: 0 0 8px;
+}
+
+/* 역할 그룹 */
+.area-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.area-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bd-1);
+}
+
+.group-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.group-label--homeroom {
+  background-color: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-text);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+}
+
+.group-label--subject {
+  background-color: var(--clr-green-bg);
+  color: var(--clr-green-text);
+  border: 1px solid var(--clr-green-border);
+}
+
+.group-label--common {
+  background-color: var(--bg-1);
+  color: var(--tx-3);
+  border: 1px solid var(--bd-1);
+}
+
+.group-count {
+  font-size: 13px;
+  color: var(--tx-4);
 }
 
 /* 카드 그리드 */

@@ -15,6 +15,7 @@ const emit = defineEmits(['close', 'saved', 'deleted'])
 const name = ref('')
 const byteLimit = ref(1500)
 const prompt = ref('')
+const role = ref('common')
 const error = ref('')
 const confirmDelete = ref(false)
 const selectedIds = ref(new Set())
@@ -29,11 +30,13 @@ watch(
         name.value = a.name
         byteLimit.value = a.byte_limit
         prompt.value = a.prompt ?? ''
+        role.value = a.role ?? 'common'
         selectedIds.value = new Set(a.activities.map(x => x.id))
       } else {
         name.value = ''
         byteLimit.value = 1500
         prompt.value = ''
+        role.value = 'common'
         selectedIds.value = new Set()
       }
       error.value = ''
@@ -68,6 +71,7 @@ function submit() {
     name: name.value.trim(),
     byteLimit: Number(byteLimit.value),
     prompt: prompt.value.trim() || null,
+    role: role.value,
     activityIds: [...selectedIds.value],
   })
 }
@@ -108,6 +112,15 @@ function handleDelete() {
               placeholder="예: 자율활동, 진로활동"
               @keydown.enter="submit"
           />
+        </div>
+
+        <div class="field">
+          <label class="field-label">교사 역할</label>
+          <div class="role-tabs">
+            <button type="button" class="role-tab" :class="role === 'homeroom' ? 'role-tab--on' : ''" @click="role = 'homeroom'">담임</button>
+            <button type="button" class="role-tab" :class="role === 'subject'  ? 'role-tab--on' : ''" @click="role = 'subject'">교과</button>
+            <button type="button" class="role-tab" :class="role === 'common'   ? 'role-tab--on' : ''" @click="role = 'common'">공통</button>
+          </div>
         </div>
 
         <div class="field">
@@ -394,6 +407,33 @@ function handleDelete() {
   font-size: 13px;
   color: var(--tx-4);
   font-weight: 400;
+}
+
+/* 역할 탭 */
+.role-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.role-tab {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 8px;
+  border: 1px solid var(--bd-1);
+  background: none;
+  color: var(--tx-4);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color .15s, background-color .15s, color .15s;
+}
+
+.role-tab:hover { color: var(--tx-2); background-color: var(--bg-hover); }
+
+.role-tab--on {
+  border-color: rgba(var(--accent-rgb), .5);
+  background-color: rgba(var(--accent-rgb), .12);
+  color: var(--accent-text);
 }
 
 .prompt-textarea {

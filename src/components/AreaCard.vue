@@ -22,7 +22,12 @@ const hiddenCount = computed(() =>
 <template>
   <div class="card" @click="emit('edit', area)">
     <div class="card-top">
-      <h3 class="area-name">{{ area.name }}</h3>
+      <div class="name-row">
+        <h3 class="area-name">{{ area.name }}</h3>
+        <span v-if="area.role && area.role !== 'common'" class="role-badge" :class="`role-badge--${area.role}`">
+          {{ area.role === 'homeroom' ? '담임' : '교과' }}
+        </span>
+      </div>
       <span class="byte-badge">최대 {{ area.byte_limit.toLocaleString() }} Bytes</span>
       <div class="name-divider"></div>
       <div class="chip-row" v-if="area.activities.length > 0">
@@ -79,12 +84,40 @@ const hiddenCount = computed(() =>
   white-space: nowrap;
 }
 
+.name-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .area-name {
   font-size: 18px;
   font-weight: 700;
   color: var(--tx-1);
   margin: 0;
   line-height: 1.4;
+}
+
+.role-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+}
+
+.role-badge--homeroom {
+  background-color: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-text);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+}
+
+.role-badge--subject {
+  background-color: var(--clr-green-bg);
+  color: var(--clr-green-text);
+  border: 1px solid var(--clr-green-border);
 }
 
 .name-divider {

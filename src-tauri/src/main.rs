@@ -55,6 +55,7 @@ fn main() {
             delete_area,
             seed_default_areas,
             seed_areas_by_role,
+            set_area_behavior_items,
             // 활동
             get_activities,
             set_area_activities,
@@ -72,6 +73,8 @@ fn main() {
             set_area_students,
             get_student_tags,
             set_student_tags,
+            get_student_behavior,
+            set_student_behavior,
             // 기록
             get_area_grid,
             upsert_record,

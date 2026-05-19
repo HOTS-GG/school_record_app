@@ -19,14 +19,14 @@ export const useAreaStore = defineStore('area', () => {
         }
     }
 
-    async function createArea(name, byteLimit, prompt = null) {
-        const id = await invoke('create_area', {name, byteLimit, prompt})
+    async function createArea(name, byteLimit, prompt = null, role = 'common') {
+        const id = await invoke('create_area', {name, byteLimit, prompt, role})
         await fetchAreas()
         return id
     }
 
-    async function updateArea(id, name, byteLimit, prompt = null) {
-        await invoke('update_area', {id, name, byteLimit, prompt})
+    async function updateArea(id, name, byteLimit, prompt = null, role = 'common') {
+        await invoke('update_area', {id, name, byteLimit, prompt, role})
         await fetchAreas()
     }
 
@@ -60,10 +60,16 @@ export const useAreaStore = defineStore('area', () => {
         return added
     }
 
+    async function setAreaBehaviorItems(areaId, items) {
+        const json = items ? JSON.stringify(items) : null
+        await invoke('set_area_behavior_items', {areaId, items: json})
+        await fetchAreas()
+    }
+
     return {
         areas, loading, error,
         fetchAreas, createArea, updateArea, deleteArea,
         setAreaActivities, getAreaStudents, setAreaStudents,
-        seedDefaultAreas, seedAreasByRole,
+        seedDefaultAreas, seedAreasByRole, setAreaBehaviorItems,
     }
 })

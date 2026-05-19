@@ -14,6 +14,8 @@ pub struct AreaItem {
     pub name: String,
     pub byte_limit: i64,
     pub prompt: Option<String>,
+    pub role: String,                   // 'homeroom' | 'subject' | 'common'
+    pub behavior_items: Option<String>, // JSON: 영역별 행동 항목 설정
     pub activities: Vec<ActivityItem>,
 }
 
@@ -41,6 +43,7 @@ pub struct StudentItem {
     pub number: i64,
     pub name: String,
     pub tags: Vec<String>,
+    pub behavior: Option<String>, // JSON 문자열 (행동 프로필)
 }
 
 #[derive(Deserialize)]

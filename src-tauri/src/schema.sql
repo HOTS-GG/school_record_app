@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS Student
     number    INTEGER NOT NULL,
     name      TEXT    NOT NULL,
     tags      TEXT,
+    behavior  TEXT,
     UNIQUE (grade, class_num, number),
     CHECK (grade >= 1 AND class_num >= 1 AND number >= 1)
 );
@@ -19,7 +20,9 @@ CREATE TABLE IF NOT EXISTS Area
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL UNIQUE,
     byte_limit INTEGER NOT NULL CHECK (byte_limit > 0),
-    prompt     TEXT
+    prompt     TEXT,
+    role           TEXT    NOT NULL DEFAULT 'common',
+    behavior_items TEXT
 );
 
 CREATE TABLE IF NOT EXISTS Activity

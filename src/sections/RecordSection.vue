@@ -1,14 +1,13 @@
 ﻿<script setup>
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {ALargeSmall, ArrowLeftRight, BookOpen, CircleAlert, Minimize2, Pin, PinOff, Sparkles, Tag} from 'lucide-vue-next'
+import {ALargeSmall, ArrowLeftRight, Brain, CircleAlert, Minimize2, Pin, PinOff, Sparkles} from 'lucide-vue-next'
 import {useAreaStore} from '../stores/area'
 import {useRecordStore} from '../stores/record'
 import {useConfigStore} from '../stores/configStore'
 import {useStudentStore} from '../stores/student'
 import CellHistoryModal from '../components/CellHistoryModal.vue'
 import AiSuggestModal from '../components/AiSuggestModal.vue'
-import StudentTagsModal from '../components/StudentTagsModal.vue'
-import RefSettingsModal from '../components/RefSettingsModal.vue'
+import StudentBehaviorModal from '../components/StudentBehaviorModal.vue'
 
 const areaStore = useAreaStore()
 const recordStore = useRecordStore()
@@ -67,8 +66,34 @@ function stopResize() {
 }
 
 // 모달 상태
-const studentTagsVisible = ref(false)
-const refSettingsVisible = ref(false)
+const behaviorModalVisible = ref(false)
+
+// 행동 프로필 맵 (studentId → behavior object)
+const behaviorMap = ref({})
+
+async function loadBehaviorMap() {
+  if (!recordStore.gridData) return
+  const map = {}
+  for (const s of recordStore.gridData.students) {
+    if (s.behavior) {
+      try { map[s.id] = JSON.parse(s.behavior) } catch { /* ignore */ }
+    }
+  }
+  behaviorMap.value = map
+}
+
+async function handleBehaviorSaved({ studentId, behavior }) {
+  await studentStore.setStudentBehavior(studentId, behavior)
+  // 로컬 맵 즉시 반영
+  const next = { ...behaviorMap.value }
+  next[studentId] = behavior
+  behaviorMap.value = next
+  // 그리드 재조회 (behavior 컬럼 갱신)
+  if (selectedAreaId.value) {
+    await recordStore.fetchAreaGrid(selectedAreaId.value)
+    await loadBehaviorMap()
+  }
+}
 
 const FONT_SIZE_MIN = 10
 const FONT_SIZE_MAX = 28
@@ -129,6 +154,7 @@ watch(selectedAreaId, async (id) => {
     cellContent.value = map
     savingState.value = new Map()
     collapsedActivities.value = new Set()
+    await loadBehaviorMap()
     if (!compactCell.value) {
       await nextTick()
       document.querySelectorAll('.cell-input').forEach(el => autoResize(el))
@@ -309,6 +335,14 @@ function openHistory(act, student) {
   }
 }
 
+// 현재 선택된 영역의 behavior_items (파싱된 객체)
+const currentAreaItems = computed(() => {
+  if (!selectedAreaId.value) return null
+  const area = areaStore.areas.find(a => a.id === selectedAreaId.value)
+  if (!area?.behavior_items) return null
+  try { return JSON.parse(area.behavior_items) } catch { return null }
+})
+
 // AI 제안 모달
 const aiModal = ref(null) // { activityId, studentId, activityName, studentName, currentContent }
 
@@ -322,27 +356,11 @@ function openAiModal(act, student) {
     areaName: area?.name ?? '',
     areaId: selectedAreaId.value,
     currentContent: getCellContent(act.id, student.id),
-    studentTags: student.tags ?? [],
+    studentBehavior: behaviorMap.value[student.id] ?? null,
+    areaItems: currentAreaItems.value,
   }
 }
 
-async function handleTagsSaved(changes) {
-  for (const {studentId, tags} of changes) {
-    await studentStore.setStudentTags(studentId, tags)
-  }
-  // 그리드 재조회로 업데이트된 태그 반영
-  if (selectedAreaId.value) {
-    await recordStore.fetchAreaGrid(selectedAreaId.value)
-    const map = new Map(cellContent.value)
-    for (const r of recordStore.gridData.records) {
-      if (!map.has(cellKey(r.activity_id, r.student_id))) {
-        map.set(cellKey(r.activity_id, r.student_id), r.content)
-      }
-    }
-    cellContent.value = map
-  }
-  studentTagsVisible.value = false
-}
 
 function onAiAccept(text) {
   if (!aiModal.value) return
@@ -440,21 +458,13 @@ function isNewGroup(students, index) {
             {{ highlightEmpty ? '빈 학생 ON' : '빈 학생 OFF' }}
           </button>
           <button
-              v-if="recordStore.gridData && recordStore.gridData.students.length > 0"
               class="btn-freeze"
-              @click="studentTagsVisible = true"
-              title="학생 특성 태그 관리"
+              :disabled="!selectedAreaId || !recordStore.gridData || recordStore.gridData.students.length === 0"
+              @click="behaviorModalVisible = true"
+              title="학생 행동 프로필 관리"
           >
-            <Tag :size="15"/>
-            학생 특성
-          </button>
-          <button
-              class="btn-freeze"
-              @click="refSettingsVisible = true"
-              title="AI 참고 자료 설정"
-          >
-            <BookOpen :size="15"/>
-            참고 자료 설정
+            <Brain :size="15"/>
+            행동 프로필
           </button>
         </div>
       </div>
@@ -642,24 +652,23 @@ function isNewGroup(students, index) {
         :area-name="aiModal.areaName"
         :area-id="aiModal.areaId"
         :current-content="aiModal.currentContent"
-        :student-tags="aiModal.studentTags"
+        :student-behavior="aiModal.studentBehavior"
+        :area-items="aiModal.areaItems"
         @close="aiModal = null"
         @accept="onAiAccept"
     />
 
-    <!-- 학생 특성 태그 모달 -->
-    <StudentTagsModal
-        v-if="studentTagsVisible && recordStore.gridData"
-        :students="recordStore.gridData.students"
-        @close="studentTagsVisible = false"
-        @saved="handleTagsSaved"
-    />
-
-    <!-- AI 참고 자료 설정 모달 -->
-    <RefSettingsModal
-        v-if="refSettingsVisible"
-        @close="refSettingsVisible = false"
-    />
+    <!-- 행동 프로필 모달 -->
+    <transition name="modal">
+      <StudentBehaviorModal
+          v-if="behaviorModalVisible && recordStore.gridData"
+          :students="recordStore.gridData.students"
+          :behavior-map="behaviorMap"
+          :area-id="selectedAreaId"
+          @close="behaviorModalVisible = false"
+          @saved="handleBehaviorSaved"
+      />
+    </transition>
   </div>
 </template>
 
@@ -791,9 +800,14 @@ function isNewGroup(students, index) {
   white-space: nowrap;
 }
 
-.btn-freeze:hover {
+.btn-freeze:hover:not(:disabled) {
   background-color: var(--bd-1);
   color: var(--tx-2);
+}
+
+.btn-freeze:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .btn-freeze--on {

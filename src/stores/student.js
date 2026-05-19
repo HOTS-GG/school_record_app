@@ -46,5 +46,16 @@ export const useStudentStore = defineStore('student', () => {
         await invoke('set_student_tags', {studentId, tags})
     }
 
-    return {students, loading, error, fetchStudents, createStudent, updateStudent, deleteStudent, bulkUpsertStudents, getStudentTags, setStudentTags}
+    async function getStudentBehavior(studentId) {
+        const raw = await invoke('get_student_behavior', {studentId})
+        if (!raw) return null
+        try { return JSON.parse(raw) } catch { return null }
+    }
+
+    async function setStudentBehavior(studentId, behavior) {
+        const json = behavior ? JSON.stringify(behavior) : null
+        await invoke('set_student_behavior', {studentId, behavior: json})
+    }
+
+    return {students, loading, error, fetchStudents, createStudent, updateStudent, deleteStudent, bulkUpsertStudents, getStudentTags, setStudentTags, getStudentBehavior, setStudentBehavior}
 })
