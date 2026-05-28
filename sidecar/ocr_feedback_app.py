@@ -1,294 +1,313 @@
 """
 OCR 피드백 도구 (독립 실행형)
-실행: python ocr_feedback_app.py
+실행: python ocr_feedback_app.py  /  또는 run_feedback.bat
 
-- 이미지 파일 선택 → 전체 텍스트 자동 인식
-- 인식 결과를 수정하고 저장
-- 수정된 데이터는 corrections.jsonl에 누적 (파인튜닝용)
+구성
+  왼쪽  : 원본 비율 이미지 + bbox 번호 오버레이
+  오른쪽 : 번호 대응 인식 결과 (수정 가능) + 저장
 """
 
-import sys
-import os
-import json
-import datetime
-import tkinter as tk
+import sys, os, json, datetime, tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 
-_SCRIPT_DIR = Path(__file__).parent
+_SCRIPT_DIR       = Path(__file__).parent
 _CORRECTIONS_FILE = _SCRIPT_DIR / "corrections.jsonl"
 
-# ── 모델 로드 ────────────────────────────────────────────────────
+# ── EasyOCR 로드 ─────────────────────────────────────────────────
 _reader = None
 
 def _get_reader():
     global _reader
     if _reader is not None:
         return _reader
-
-    bundle_dir = _SCRIPT_DIR / "models"
+    bundle = _SCRIPT_DIR / "models"
     kwargs = {"gpu": False}
-    if bundle_dir.is_dir():
-        os.environ["EASYOCR_MODULE_PATH"] = str(bundle_dir)
-        kwargs["model_storage_directory"] = str(bundle_dir)
-
+    if bundle.is_dir():
+        os.environ["EASYOCR_MODULE_PATH"] = str(bundle)
+        kwargs["model_storage_directory"]  = str(bundle)
     import easyocr
     _reader = easyocr.Reader(["ko", "en"], **kwargs)
     return _reader
 
-
 def run_ocr(image_path: str) -> list:
-    """이미지에서 텍스트 인식 (손글씨/인쇄체 구분 없이 전부)"""
     import numpy as np
     from PIL import Image
-
-    reader = _get_reader()
-
     img_np = np.array(Image.open(image_path).convert("RGB"))[:, :, ::-1]
-    raw = reader.readtext(img_np, detail=1, paragraph=False)
-
-    results = []
-    for (bbox_pts, text, conf) in raw:
-        xs = [p[0] for p in bbox_pts]
-        ys = [p[1] for p in bbox_pts]
-        results.append({
+    raw = _get_reader().readtext(img_np, detail=1, paragraph=False)
+    out = []
+    for bbox_pts, text, conf in raw:
+        xs = [p[0] for p in bbox_pts]; ys = [p[1] for p in bbox_pts]
+        out.append({
             "text":       text,
             "confidence": round(float(conf), 4),
             "bbox":       [int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))],
         })
-    return results
+    return out
 
-
-def save_correction(image_path: str, raw_text: str, corrected_text: str):
-    """corrections.jsonl에 교정 데이터 추가"""
-    record = {
-        "image_path":     image_path,
-        "raw_text":       raw_text,
-        "corrected_text": corrected_text,
-        "saved_at":       datetime.datetime.now().isoformat(),
-    }
+def save_correction(image_path, raw_text, corrected_text):
+    rec = {"image_path": image_path, "raw_text": raw_text,
+           "corrected_text": corrected_text,
+           "saved_at": datetime.datetime.now().isoformat()}
     with open(_CORRECTIONS_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
-# ── GUI ──────────────────────────────────────────────────────────
-class OcrFeedbackApp(tk.Tk):
+# ── 메인 앱 ──────────────────────────────────────────────────────
+class App(tk.Tk):
+    PAD = 8
+    BBOX_COLORS = ("#3b82f6", "#10b981", "#f59e0b", "#8b5cf6",
+                   "#ec4899", "#06b6d4", "#84cc16", "#f97316")
+    WARN_COLOR  = "#ef4444"
+
     def __init__(self):
         super().__init__()
         self.title("OCR 피드백 도구")
-        self.geometry("960x700")
-        self.minsize(700, 500)
-        self.configure(bg="#f8f8f8")
-        self._image_path = None
-        self._ocr_results = []
-        self._correction_vars = []
+        self.geometry("1100x720")
+        self.minsize(800, 500)
+        self.configure(bg="#f3f4f6")
+
+        self._img_path   = None
+        self._pil_img    = None   # 원본 PIL Image
+        self._tk_img     = None   # PhotoImage (GC 방지용 참조 유지)
+        self._results    = []
+        self._cvars      = []     # 교정 StringVar 목록
+        self._scale      = 1.0
+        self._img_ox     = 0      # 캔버스 내 이미지 왼쪽 여백
+        self._img_oy     = 0      # 캔버스 내 이미지 위쪽 여백
+
         self._build_ui()
 
-    # ── UI 구성 ──────────────────────────────────────────────────
+    # ── UI ───────────────────────────────────────────────────────
     def _build_ui(self):
-        # 상단 툴바
-        toolbar = tk.Frame(self, bg="#f0f0f0", pady=6, padx=10)
-        toolbar.pack(fill=tk.X, side=tk.TOP)
+        # ── 툴바 ──
+        bar = tk.Frame(self, bg="#1e293b", pady=7, padx=10)
+        bar.pack(fill=tk.X)
 
-        tk.Button(
-            toolbar, text="📂  이미지 열기", command=self._pick_image,
-            bg="#3b82f6", fg="white", padx=14, pady=6,
-            font=("Segoe UI", 10, "bold"), relief=tk.FLAT, cursor="hand2",
-        ).pack(side=tk.LEFT, padx=(0, 8))
+        def btn(parent, text, cmd, bg, state=tk.NORMAL):
+            return tk.Button(parent, text=text, command=cmd,
+                             bg=bg, fg="white", relief=tk.FLAT,
+                             font=("Segoe UI", 10, "bold"),
+                             padx=14, pady=5, cursor="hand2", state=state)
 
-        self._run_btn = tk.Button(
-            toolbar, text="▶  OCR 실행", command=self._run_ocr,
-            bg="#10b981", fg="white", padx=14, pady=6,
-            font=("Segoe UI", 10, "bold"), relief=tk.FLAT, cursor="hand2",
-            state=tk.DISABLED,
-        )
-        self._run_btn.pack(side=tk.LEFT, padx=(0, 8))
+        btn(bar, "📂 이미지 열기", self._pick, "#3b82f6").pack(side=tk.LEFT, padx=(0,6))
+        self._btn_run  = btn(bar, "▶ OCR 실행",  self._ocr,  "#10b981", tk.DISABLED)
+        self._btn_run.pack(side=tk.LEFT, padx=(0,6))
+        self._btn_save = btn(bar, "💾 교정 저장", self._save, "#f59e0b", tk.DISABLED)
+        self._btn_save.pack(side=tk.LEFT)
 
-        self._save_btn = tk.Button(
-            toolbar, text="💾  교정 저장", command=self._save_all,
-            bg="#f59e0b", fg="white", padx=14, pady=6,
-            font=("Segoe UI", 10, "bold"), relief=tk.FLAT, cursor="hand2",
-            state=tk.DISABLED,
-        )
-        self._save_btn.pack(side=tk.LEFT)
+        self._status = tk.StringVar(value="이미지를 선택하세요.")
+        tk.Label(bar, textvariable=self._status,
+                 bg="#1e293b", fg="#94a3b8",
+                 font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=14)
 
-        self._status_var = tk.StringVar(value="이미지를 선택하세요.")
-        tk.Label(
-            toolbar, textvariable=self._status_var,
-            bg="#f0f0f0", fg="#6b7280", font=("Segoe UI", 9),
-        ).pack(side=tk.LEFT, padx=16)
+        # ── 본문 (PanedWindow) ──
+        pw = tk.PanedWindow(self, orient=tk.HORIZONTAL,
+                             sashwidth=6, sashrelief=tk.FLAT,
+                             bg="#cbd5e1")
+        pw.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-        # 본문 영역 (이미지 | 결과 패널)
-        paned = tk.PanedWindow(self, orient=tk.HORIZONTAL, sashwidth=5, bg="#d1d5db")
-        paned.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 6))
+        # 왼쪽: 이미지 캔버스
+        self._canvas = tk.Canvas(pw, bg="#1e293b", highlightthickness=0, cursor="crosshair")
+        pw.add(self._canvas, minsize=400, width=660)
+        self._canvas.bind("<Configure>", self._on_canvas_resize)
 
-        # 좌: 이미지 미리보기
-        left = tk.Frame(paned, bg="#f8f8f8")
-        paned.add(left, minsize=300, width=460)
+        # 오른쪽: 결과 패널
+        right = tk.Frame(pw, bg="#f3f4f6")
+        pw.add(right, minsize=280)
+        self._build_result_panel(right)
 
-        self._canvas = tk.Canvas(left, bg="#e5e7eb", highlightthickness=0)
-        self._canvas.pack(fill=tk.BOTH, expand=True)
-        self._canvas.bind("<Configure>", self._redraw_image)
+    def _build_result_panel(self, parent):
+        header = tk.Frame(parent, bg="#f3f4f6")
+        header.pack(fill=tk.X, padx=10, pady=(8, 4))
+        tk.Label(header, text="인식 결과", bg="#f3f4f6",
+                 fg="#1e293b", font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
+        self._count_lbl = tk.Label(header, text="", bg="#f3f4f6",
+                                    fg="#64748b", font=("Segoe UI", 9))
+        self._count_lbl.pack(side=tk.RIGHT)
 
-        # 우: 결과 목록 (스크롤)
-        right = tk.Frame(paned, bg="#f8f8f8")
-        paned.add(right, minsize=240)
+        sep = tk.Frame(parent, bg="#e2e8f0", height=1)
+        sep.pack(fill=tk.X, padx=0)
 
-        header = tk.Frame(right, bg="#f8f8f8")
-        header.pack(fill=tk.X, pady=(6, 2), padx=6)
-        tk.Label(header, text="인식 결과 (수정 가능)", bg="#f8f8f8",
-                 fg="#374151", font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
-        self._count_var = tk.StringVar(value="")
-        tk.Label(header, textvariable=self._count_var, bg="#f8f8f8",
-                 fg="#9ca3af", font=("Segoe UI", 9)).pack(side=tk.RIGHT)
-
-        scroll_frame = tk.Frame(right, bg="#f8f8f8")
-        scroll_frame.pack(fill=tk.BOTH, expand=True, padx=6)
-        vsb = ttk.Scrollbar(scroll_frame, orient=tk.VERTICAL)
+        # 스크롤 가능 영역
+        wrap = tk.Frame(parent, bg="#f3f4f6")
+        wrap.pack(fill=tk.BOTH, expand=True)
+        vsb = ttk.Scrollbar(wrap, orient=tk.VERTICAL)
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
-        self._result_canvas = tk.Canvas(
-            scroll_frame, bg="#f8f8f8", highlightthickness=0, yscrollcommand=vsb.set
-        )
-        self._result_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vsb.config(command=self._result_canvas.yview)
-        self._result_inner = tk.Frame(self._result_canvas, bg="#f8f8f8")
-        self._result_canvas.create_window((0, 0), window=self._result_inner, anchor="nw")
-        self._result_inner.bind(
-            "<Configure>",
-            lambda e: self._result_canvas.configure(
-                scrollregion=self._result_canvas.bbox("all")
-            ),
-        )
-        self._result_canvas.bind("<MouseWheel>",
-            lambda e: self._result_canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+        self._rcanvas = tk.Canvas(wrap, bg="#f3f4f6",
+                                   highlightthickness=0, yscrollcommand=vsb.set)
+        self._rcanvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        vsb.config(command=self._rcanvas.yview)
+        self._rinner = tk.Frame(self._rcanvas, bg="#f3f4f6")
+        self._rcanvas.create_window((0,0), window=self._rinner, anchor="nw", tags="inner")
+        self._rinner.bind("<Configure>", self._on_rinner_resize)
+        self._rcanvas.bind("<Configure>",
+            lambda e: self._rcanvas.itemconfig("inner", width=e.width))
+        for w in (self._rcanvas, self._rinner):
+            w.bind("<MouseWheel>",
+                lambda e: self._rcanvas.yview_scroll(-1*(e.delta//120), "units"))
 
-        self._pil_image = None
-        self._tk_image  = None
+    def _on_rinner_resize(self, _=None):
+        self._rcanvas.configure(scrollregion=self._rcanvas.bbox("all"))
 
-    # ── 이미지 선택 ──────────────────────────────────────────────
-    def _pick_image(self):
+    # ── 이미지 ───────────────────────────────────────────────────
+    def _pick(self):
         path = filedialog.askopenfilename(
-            filetypes=[("이미지", "*.png *.jpg *.jpeg *.bmp *.webp"), ("모두", "*")]
-        )
+            filetypes=[("이미지", "*.png *.jpg *.jpeg *.bmp *.webp"), ("모두", "*")])
         if not path:
             return
-        self._image_path = path
-        self._status_var.set(Path(path).name)
-        self._load_image_preview(path)
-        self._run_btn.config(state=tk.NORMAL)
-        self._clear_results()
-
-    def _load_image_preview(self, path: str):
         from PIL import Image
-        img = Image.open(path)
-        self._pil_image = img
-        self._redraw_image()
-
-    def _redraw_image(self, event=None):
-        if self._pil_image is None:
-            return
-        from PIL import ImageTk
-        cw = self._canvas.winfo_width()  or 460
-        ch = self._canvas.winfo_height() or 500
-        img = self._pil_image.copy()
-        img.thumbnail((cw, ch), resample=1)
-        self._tk_image = ImageTk.PhotoImage(img)
-        self._canvas.delete("all")
-        self._canvas.create_image(cw // 2, ch // 2, image=self._tk_image, anchor=tk.CENTER)
-        self._draw_bboxes(img.width, img.height, cw, ch)
-
-    def _draw_bboxes(self, tw, th, cw, ch):
-        if not self._ocr_results:
-            return
-        ow, oh = self._pil_image.size
-        sx = tw / ow
-        sy = th / oh
-        ox = (cw - tw) // 2
-        oy = (ch - th) // 2
-        for r in self._ocr_results:
-            x1, y1, x2, y2 = r["bbox"]
-            color = "#ef4444" if r["confidence"] < 0.55 else "#3b82f6"
-            self._canvas.create_rectangle(
-                ox + x1 * sx, oy + y1 * sy,
-                ox + x2 * sx, oy + y2 * sy,
-                outline=color, width=2,
-            )
-
-    # ── OCR 실행 ─────────────────────────────────────────────────
-    def _run_ocr(self):
-        if not self._image_path:
-            return
-        self._status_var.set("모델 로딩 중… (최초 1회, 잠시 기다리세요)")
-        self._run_btn.config(state=tk.DISABLED)
-        self.update()
-
-        try:
-            results = run_ocr(self._image_path)
-            self._ocr_results = results
-            self._show_results(results)
-            self._redraw_image()
-            self._status_var.set(f"인식 완료 — {len(results)}건")
-            self._save_btn.config(state=tk.NORMAL if results else tk.DISABLED)
-        except Exception as e:
-            messagebox.showerror("OCR 오류", str(e))
-            self._status_var.set("오류 발생")
-        finally:
-            self._run_btn.config(state=tk.NORMAL)
-
-    # ── 결과 표시 ────────────────────────────────────────────────
-    def _clear_results(self):
-        for w in self._result_inner.winfo_children():
-            w.destroy()
-        self._correction_vars.clear()
-        self._ocr_results = []
-        self._count_var.set("")
-
-    def _show_results(self, results: list):
+        self._img_path = path
+        self._pil_img  = Image.open(path).convert("RGB")
+        self._results  = []
         self._clear_results()
-        self._count_var.set(f"{len(results)}건")
-        for i, r in enumerate(results):
-            card = tk.Frame(
-                self._result_inner, bg="white",
-                highlightbackground="#e5e7eb", highlightthickness=1,
-                padx=8, pady=6,
-            )
-            card.pack(fill=tk.X, pady=2)
+        self._render_image()
+        self._status.set(Path(path).name)
+        self._btn_run.config(state=tk.NORMAL)
+        self._btn_save.config(state=tk.DISABLED)
 
+    def _on_canvas_resize(self, _=None):
+        self._render_image()
+
+    def _render_image(self):
+        """원본 비율 유지, 캔버스에 fit. 스케일·오프셋 저장."""
+        if self._pil_img is None:
+            return
+        from PIL import Image, ImageTk
+
+        cw = self._canvas.winfo_width()  or 660
+        ch = self._canvas.winfo_height() or 680
+        ow, oh = self._pil_img.size
+
+        # fit 스케일 (업스케일 없음)
+        scale = min(cw / ow, ch / oh, 1.0)
+        nw = max(1, int(ow * scale))
+        nh = max(1, int(oh * scale))
+        self._scale  = scale
+        self._img_ox = (cw - nw) // 2
+        self._img_oy = (ch - nh) // 2
+
+        disp = self._pil_img.resize((nw, nh), Image.LANCZOS)
+        self._tk_img = ImageTk.PhotoImage(disp)
+
+        self._canvas.delete("all")
+        self._canvas.create_image(self._img_ox, self._img_oy,
+                                   image=self._tk_img, anchor=tk.NW)
+        self._draw_bboxes()
+
+    def _draw_bboxes(self):
+        if not self._results:
+            return
+        s = self._scale
+        ox, oy = self._img_ox, self._img_oy
+        for i, r in enumerate(self._results):
+            x1, y1, x2, y2 = r["bbox"]
+            cx1 = ox + x1*s; cy1 = oy + y1*s
+            cx2 = ox + x2*s; cy2 = oy + y2*s
+            color = self.WARN_COLOR if r["confidence"] < 0.55 \
+                    else self.BBOX_COLORS[i % len(self.BBOX_COLORS)]
+            self._canvas.create_rectangle(cx1, cy1, cx2, cy2,
+                                           outline=color, width=2)
+            # 번호 배지
+            num = str(i + 1)
+            self._canvas.create_rectangle(cx1, cy1,
+                                           cx1 + len(num)*8 + 6, cy1 + 16,
+                                           fill=color, outline="")
+            self._canvas.create_text(cx1 + 3, cy1 + 2, text=num,
+                                      anchor=tk.NW, fill="white",
+                                      font=("Arial", 8, "bold"))
+
+    # ── OCR ──────────────────────────────────────────────────────
+    def _ocr(self):
+        if not self._img_path:
+            return
+        self._status.set("OCR 실행 중… (최초 1회 모델 로딩 시 1~2분 소요)")
+        self._btn_run.config(state=tk.DISABLED)
+        self.update()
+        try:
+            self._results = run_ocr(self._img_path)
+            self._render_image()
+            self._show_results()
+            self._status.set(f"완료 — {len(self._results)}건 인식")
+            self._btn_save.config(
+                state=tk.NORMAL if self._results else tk.DISABLED)
+        except Exception as e:
+            messagebox.showerror("오류", str(e))
+            self._status.set("오류 발생")
+        finally:
+            self._btn_run.config(state=tk.NORMAL)
+
+    # ── 결과 목록 ─────────────────────────────────────────────────
+    def _clear_results(self):
+        for w in self._rinner.winfo_children():
+            w.destroy()
+        self._cvars.clear()
+        self._count_lbl.config(text="")
+
+    def _show_results(self):
+        self._clear_results()
+        self._count_lbl.config(text=f"{len(self._results)}건")
+
+        for i, r in enumerate(self._results):
+            color = self.WARN_COLOR if r["confidence"] < 0.55 \
+                    else self.BBOX_COLORS[i % len(self.BBOX_COLORS)]
             conf_pct = int(r["confidence"] * 100)
-            conf_color = "#ef4444" if conf_pct < 55 else "#6b7280"
-            tk.Label(card, text=f"신뢰도 {conf_pct}%",
-                     bg="white", fg=conf_color, font=("Segoe UI", 8)).pack(anchor="w")
 
+            # ── 카드 ──
+            card = tk.Frame(self._rinner, bg="white",
+                             highlightbackground="#e2e8f0",
+                             highlightthickness=1)
+            card.pack(fill=tk.X, padx=8, pady=3, ipady=4)
+            card.bind("<MouseWheel>",
+                lambda e: self._rcanvas.yview_scroll(-1*(e.delta//120), "units"))
+
+            # 번호 + 신뢰도
+            meta = tk.Frame(card, bg="white")
+            meta.pack(fill=tk.X, padx=6, pady=(4,2))
+
+            num_badge = tk.Label(meta,
+                text=f" {i+1} ", bg=color, fg="white",
+                font=("Arial", 8, "bold"), padx=2)
+            num_badge.pack(side=tk.LEFT, padx=(0, 6))
+
+            tk.Label(meta, text=f"신뢰도 {conf_pct}%",
+                     bg="white",
+                     fg=self.WARN_COLOR if conf_pct < 55 else "#64748b",
+                     font=("Segoe UI", 8)).pack(side=tk.LEFT)
+
+            # 텍스트 입력
             var = tk.StringVar(value=r["text"])
-            self._correction_vars.append(var)
-            entry = tk.Entry(card, textvariable=var, font=("Malgun Gothic", 10),
-                             bg="#f9fafb", relief=tk.FLAT,
-                             highlightbackground="#d1d5db", highlightthickness=1)
-            entry.pack(fill=tk.X, pady=(2, 0))
+            self._cvars.append(var)
+            e = tk.Entry(card, textvariable=var,
+                         font=("Malgun Gothic", 10),
+                         bg="#f8fafc", relief=tk.FLAT,
+                         highlightbackground="#cbd5e1",
+                         highlightthickness=1)
+            e.pack(fill=tk.X, padx=6, pady=(0,4), ipady=3)
+            e.bind("<MouseWheel>",
+                lambda ev: self._rcanvas.yview_scroll(-1*(ev.delta//120), "units"))
 
-    # ── 교정 저장 ─────────────────────────────────────────────────
-    def _save_all(self):
-        if not self._image_path or not self._ocr_results:
+    # ── 저장 ─────────────────────────────────────────────────────
+    def _save(self):
+        if not self._img_path or not self._results:
             return
         count = 0
-        for i, r in enumerate(self._ocr_results):
-            corrected = self._correction_vars[i].get().strip()
-            if corrected != r["text"]:
-                save_correction(self._image_path, r["text"], corrected)
+        for i, r in enumerate(self._results):
+            corrected = self._cvars[i].get().strip()
+            if corrected and corrected != r["text"]:
+                save_correction(self._img_path, r["text"], corrected)
                 count += 1
-        self._status_var.set(f"저장 완료 — {count}건 교정 데이터 기록")
-        messagebox.showinfo("저장 완료",
-            f"수정된 항목 {count}건이 corrections.jsonl에 저장됐습니다.")
+        msg = (f"수정된 항목 {count}건 저장 완료\n"
+               f"({_CORRECTIONS_FILE.name})" if count else "수정된 항목이 없습니다.")
+        self._status.set(f"저장 완료 — {count}건")
+        messagebox.showinfo("저장", msg)
 
 
-# ── 엔트리포인트 ────────────────────────────────────────────────
+# ── 엔트리포인트 ─────────────────────────────────────────────────
 if __name__ == "__main__":
-    # tkinter DPI 조정 (Windows 고해상도 모니터)
-    try:
+    try:                                    # Hi-DPI 인식
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(1)
     except Exception:
         pass
-
-    app = OcrFeedbackApp()
-    app.mainloop()
+    App().mainloop()
