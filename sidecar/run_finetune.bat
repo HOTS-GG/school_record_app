@@ -3,11 +3,29 @@ echo ============================================
 echo  EasyOCR Fine-Tuning Tool
 echo ============================================
 echo.
+
+:ask_path
 echo AI-Hub data folder path:
 echo e.g. D:\School-record-app\writeDB\OCR folder
 echo (Drag and drop the folder here, or type the path)
 echo.
+set AIHUB_PATH=
 set /p AIHUB_PATH="AI-Hub path: "
+
+if "%AIHUB_PATH%"=="" (
+    echo.
+    echo  Path cannot be empty. Please enter the AI-Hub folder path.
+    echo.
+    goto ask_path
+)
+
+if not exist "%AIHUB_PATH%" (
+    echo.
+    echo  Folder not found: %AIHUB_PATH%
+    echo  Please check the path and try again.
+    echo.
+    goto ask_path
+)
 
 echo.
 echo Max samples to use (default 50000, more = longer training):
