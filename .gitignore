@@ -25,3 +25,6 @@ dist-ssr
 
 *.db
 .claude/
+
+# OCR 모델 파일 (용량 문제로 git 제외, 별도 배포)
+src-tauri/resources/models/*.onnx
