@@ -71,11 +71,34 @@ impl OcrProcess {
 pub struct OcrState(pub Mutex<Option<OcrProcess>>);
 
 fn sidecar_script_path() -> String {
-    // 개발: 프로젝트 루트 기준 / 배포: 리소스 디렉토리
-    let mut path = std::env::current_dir().unwrap_or_default();
-    path.push("sidecar");
-    path.push("ocr_sidecar.py");
-    path.to_string_lossy().to_string()
+    // 개발 빌드: exe = src-tauri/target/debug/<name>.exe → 4단계 위가 프로젝트 루트
+    if let Ok(exe) = std::env::current_exe() {
+        let dev_root = exe
+            .parent()                    // debug/
+            .and_then(|p| p.parent())   // target/
+            .and_then(|p| p.parent())   // src-tauri/
+            .and_then(|p| p.parent());  // project root
+        if let Some(root) = dev_root {
+            let candidate = root.join("sidecar").join("ocr_sidecar.py");
+            if candidate.exists() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+        // 릴리즈 빌드: exe 옆에 sidecar/ 디렉토리가 있는 경우
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("sidecar").join("ocr_sidecar.py");
+            if candidate.exists() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+    }
+    // 최후 폴백: current_dir 기준
+    std::env::current_dir()
+        .unwrap_or_default()
+        .join("sidecar")
+        .join("ocr_sidecar.py")
+        .to_string_lossy()
+        .to_string()
 }
 
 fn ensure_sidecar(state: &Mutex<Option<OcrProcess>>) -> Result<(), String> {
