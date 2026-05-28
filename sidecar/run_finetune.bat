@@ -4,13 +4,21 @@ echo  EasyOCR Fine-Tuning Tool
 echo ============================================
 echo.
 
+rem -- If folder was dragged onto this bat file, use it directly
+if not "%~1"=="" (
+    set AIHUB_PATH=%~1
+    goto got_path
+)
+
 :ask_path
 echo AI-Hub data folder path:
 echo e.g. D:\School-record-app\writeDB\OCR folder
-echo (Drag and drop the folder here, or type the path)
 echo.
 set AIHUB_PATH=
 set /p AIHUB_PATH="AI-Hub path: "
+
+rem -- Strip surrounding quotes that Windows adds on drag-drop
+set AIHUB_PATH=%AIHUB_PATH:"=%
 
 if "%AIHUB_PATH%"=="" (
     echo  Path cannot be empty. Please try again.
@@ -18,6 +26,7 @@ if "%AIHUB_PATH%"=="" (
     goto ask_path
 )
 
+:got_path
 echo.
 echo Max samples (default 50000):
 set /p MAX_EXTRA="Max samples [50000]: "
@@ -30,9 +39,10 @@ if "%EPOCHS%"=="" set EPOCHS=15
 
 echo.
 echo Starting fine-tuning...
+echo  Path: %AIHUB_PATH%
 echo.
 
-python -X utf8 "%~dp0fine_tune.py" --extra-data %AIHUB_PATH% --max-extra %MAX_EXTRA% --epochs %EPOCHS%
+python -X utf8 "%~dp0fine_tune.py" --extra-data "%AIHUB_PATH%" --max-extra %MAX_EXTRA% --epochs %EPOCHS%
 
 echo.
 if %ERRORLEVEL%==0 (
