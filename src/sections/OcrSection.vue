@@ -10,6 +10,7 @@ const imgRef      = ref(null)
 const imgLoaded   = ref(false)
 const exportMsg   = ref('')
 const imgSrc      = ref('')
+const copiedIdx   = ref(-1)
 
 watch(() => ocr.imagePath, (path) => {
   imgSrc.value  = path ? convertFileSrc(path) : ''
@@ -78,6 +79,16 @@ function onNewResults() {
 async function run() {
   await ocr.pickAndRun()
   onNewResults()
+}
+
+async function copyText(text, idx) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedIdx.value = idx
+    setTimeout(() => { if (copiedIdx.value === idx) copiedIdx.value = -1 }, 1500)
+  } catch {
+    exportMsg.value = '클립보드 복사 실패'
+  }
 }
 
 async function doExport() {
@@ -193,10 +204,11 @@ onMounted(() => ocr.loadHistory())
               />
               <button
                 class="btn btn--ghost btn--sm"
-                @click="$emit('insertText', r.corrected_text)"
-                title="생기부 레코드에 삽입"
+                :class="copiedIdx === i ? 'btn--copied' : ''"
+                @click="copyText(r.corrected_text, i)"
+                title="클립보드에 복사"
               >
-                삽입
+                {{ copiedIdx === i ? '복사됨' : '복사' }}
               </button>
             </div>
           </div>
@@ -268,6 +280,7 @@ onMounted(() => ocr.loadHistory())
 }
 .btn--ghost:hover { background: var(--bg-hover-bright); }
 .btn--sm { padding: 5px 10px; font-size: 13px; }
+.btn--copied { background: var(--bg-2); color: #16a34a; border-color: #86efac; }
 
 /* 오류 */
 .error-banner {
