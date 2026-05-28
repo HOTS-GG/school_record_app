@@ -74,6 +74,8 @@ def load_aihub_data(data_dir: str, max_samples: int | None = None) -> list[dict]
     구조:
       <data_dir>/Training/[원천]Training_필기체.zip  → 이미지
       <data_dir>/Training/[라벨]Training_필기체.zip  → JSON 레이블
+      <data_dir>/Training/[원천]Training_인쇄체.zip  → 이미지 (인쇄체)
+      <data_dir>/Training/[라벨]Training_인쇄체.zip  → JSON 레이블 (인쇄체)
 
     JSON 형식:
       { "info": {"text": "가"}, "image": {"file_name": "00130001001.jpg"}, ... }
@@ -89,59 +91,94 @@ def load_aihub_data(data_dir: str, max_samples: int | None = None) -> list[dict]
         if not split_dir.is_dir():
             continue
 
-        # zip 파일 쌍 찾기: [원천]..._필기체.zip / [라벨]..._필기체.zip
-        src_zip = lbl_zip = None
+        # zip 파일 쌍 찾기: 필기체 + 인쇄체 모두
+        zip_pairs: list[tuple] = []   # (src_zip, lbl_zip, type_name)
+        src_map: dict[str, Path] = {}
+        lbl_map: dict[str, Path] = {}
         for f in split_dir.iterdir():
             name = f.name
-            if "원천" in name and "필기체" in name and name.endswith(".zip"):
-                src_zip = f
-            elif "라벨" in name and "필기체" in name and name.endswith(".zip"):
-                lbl_zip = f
+            if not name.endswith(".zip"):
+                continue
+            for type_name in ("필기체", "인쇄체"):
+                if type_name not in name:
+                    continue
+                if "원천" in name:
+                    src_map[type_name] = f
+                elif "라벨" in name:
+                    lbl_map[type_name] = f
 
-        if not src_zip or not lbl_zip:
-            print(f"[경고] {split}/ 에서 필기체 zip 파일을 찾지 못했습니다.")
+        for type_name in ("필기체", "인쇄체"):
+            src_zip = src_map.get(type_name)
+            lbl_zip = lbl_map.get(type_name)
+            if src_zip and lbl_zip:
+                zip_pairs.append((src_zip, lbl_zip, type_name))
+
+        if not zip_pairs:
+            print(f"[경고] {split}/ 에서 zip 파일을 찾지 못했습니다.")
             continue
 
-        print(f"  [{split}] 레이블 zip 인덱싱 중… ({lbl_zip.name})")
-        label_map: dict[str, str] = {}   # stem → label text
+        for src_zip, lbl_zip, type_name in zip_pairs:
+            print(f"  [{split}/{type_name}] 레이블 zip 인덱싱 중… ({lbl_zip.name})")
 
-        with zipfile.ZipFile(lbl_zip, "r") as zl:
-            json_names = [n for n in zl.namelist()
-                          if n.endswith(".json") and not n.endswith("/")]
-            for jname in json_names:
-                try:
-                    raw  = zl.read(jname)
-                    ann  = json.loads(raw.decode("utf-8"))
+            # stem → 샘플 목록 (인쇄체는 1개 이미지에서 여러 bbox 추출)
+            img_samples: dict[str, list[dict]] = {}
+
+            with zipfile.ZipFile(lbl_zip, "r") as zl:
+                json_names = [n for n in zl.namelist()
+                              if n.endswith(".json") and not n.endswith("/")]
+                for jname in json_names:
+                    try:
+                        ann  = json.loads(zl.read(jname).decode("utf-8"))
+                    except Exception:
+                        continue
+
+                    # ── 필기체: 이미지 전체 = 글자 1개 ──
                     text = (ann.get("info", {}).get("text")
                             or ann.get("text", {}).get("letter", {}).get("value")
                             or "").strip()
                     if text:
-                        stem = Path(jname).stem
-                        label_map[stem] = text
-                except Exception:
-                    continue
+                        fname = ann.get("image", {}).get("file_name", "")
+                        stem  = Path(fname).stem if fname else Path(jname).stem
+                        img_samples[stem] = [{"bbox": None, "label": text}]
+                        continue
 
-        print(f"  [{split}] 이미지 zip 스캔 중… ({src_zip.name})")
-        split_samples: list[dict] = []
-        with zipfile.ZipFile(src_zip, "r") as zi:
-            img_names = [n for n in zi.namelist()
-                         if n.lower().endswith((".jpg", ".png"))
-                         and not n.endswith("/")]
-            for iname in img_names:
-                stem  = Path(iname).stem
-                label = label_map.get(stem)
-                if not label:
-                    continue
-                split_samples.append({
-                    "kind":     "zip",
-                    "zip_path": str(src_zip),
-                    "zip_name": iname,
-                    "bbox":     None,
-                    "label":    label,
-                })
+                    # ── 인쇄체: A4 페이지 이미지 + 단어 bbox 목록 ──
+                    words = ann.get("text", {}).get("word", [])
+                    if not words:
+                        continue
+                    fname = ann.get("image", {}).get("file_name", "")
+                    stem  = Path(fname).stem if fname else Path(jname).stem
+                    entries = []
+                    for w in words:
+                        wb    = w.get("wordbox", [])
+                        label = w.get("value", "").strip()
+                        if label and len(wb) == 4:
+                            x1, y1, x2, y2 = wb
+                            entries.append({"bbox": (x1, y1, x2, y2), "label": label})
+                    if entries:
+                        img_samples[stem] = entries
 
-        print(f"  [{split}] {len(split_samples):,}건 발견")
-        samples.extend(split_samples)
+            print(f"  [{split}/{type_name}] 이미지 zip 스캔 중… ({src_zip.name})")
+            type_samples: list[dict] = []
+            with zipfile.ZipFile(src_zip, "r") as zi:
+                img_names = [n for n in zi.namelist()
+                             if n.lower().endswith((".jpg", ".png"))
+                             and not n.endswith("/")]
+                for iname in img_names:
+                    entries = img_samples.get(Path(iname).stem)
+                    if not entries:
+                        continue
+                    for e in entries:
+                        type_samples.append({
+                            "kind":     "zip",
+                            "zip_path": str(src_zip),
+                            "zip_name": iname,
+                            "bbox":     e["bbox"],
+                            "label":    e["label"],
+                        })
+
+            print(f"  [{split}/{type_name}] {len(type_samples):,}건 발견")
+            samples.extend(type_samples)
 
     if not samples:
         print("[경고] AI-Hub 데이터를 찾지 못했습니다.")
