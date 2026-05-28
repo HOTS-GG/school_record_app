@@ -3,45 +3,31 @@ echo ============================================
 echo  EasyOCR Fine-Tuning Tool
 echo ============================================
 echo.
-echo [1] AI-Hub data directory (optional, press Enter to skip):
-echo     e.g. D:\School-record-app\writeDB\OCR data folder
+echo AI-Hub data folder path:
+echo e.g. D:\School-record-app\writeDB\OCR folder
+echo (Drag and drop the folder here, or type the path)
+echo.
 set /p AIHUB_PATH="AI-Hub path: "
 
 echo.
-echo [2] Project DB file (optional, press Enter to skip):
-echo     e.g. C:\Users\user\docs\school.db
-set /p DB_PATH="DB path: "
-
-echo.
-echo [3] Max AI-Hub samples (default 50000):
+echo Max samples to use (default 50000, more = longer training):
 set /p MAX_EXTRA="Max samples [50000]: "
 if "%MAX_EXTRA%"=="" set MAX_EXTRA=50000
 
 echo.
-echo [4] Epochs (default 15):
+echo Epochs (default 15):
 set /p EPOCHS="Epochs [15]: "
 if "%EPOCHS%"=="" set EPOCHS=15
 
 echo.
-echo [5] Batch size (default 32):
-set /p BATCH="Batch [32]: "
-if "%BATCH%"=="" set BATCH=32
-
-echo.
 echo ============================================
-if not "%AIHUB_PATH%"=="" echo  AI-Hub : %AIHUB_PATH%
-if not "%DB_PATH%"==""    echo  DB     : %DB_PATH%
+echo  AI-Hub : %AIHUB_PATH%
 echo  Samples: %MAX_EXTRA%
 echo  Epochs : %EPOCHS%
-echo  Batch  : %BATCH%
 echo ============================================
 echo.
 
-set CMD=python -X utf8 "%~dp0fine_tune.py" --epochs %EPOCHS% --batch %BATCH% --max-extra %MAX_EXTRA%
-if not "%DB_PATH%"==""    set CMD=%CMD% --db "%DB_PATH%"
-if not "%AIHUB_PATH%"=="" set CMD=%CMD% --extra-data "%AIHUB_PATH%"
-
-%CMD%
+python -X utf8 "%~dp0fine_tune.py" --extra-data "%AIHUB_PATH%" --max-extra %MAX_EXTRA% --epochs %EPOCHS%
 
 echo.
 if %ERRORLEVEL%==0 (
