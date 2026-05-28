@@ -95,29 +95,26 @@ def _classify(confidence: float, image_path: str, bbox: list) -> str:
 # ── 모델 로드 ────────────────────────────────────────────────────
 def _load_reader():
     import easyocr
-
-    custom_pth = None
-    if os.path.isdir(_CUSTOM_MODEL):
-        for fname in os.listdir(_CUSTOM_MODEL):
-            if fname.endswith(".pth"):
-                custom_pth = os.path.join(_CUSTOM_MODEL, fname)
-                break
-
-    if custom_pth:
-        reader = easyocr.Reader(
-            ["ko"],
-            gpu=False,
-            model_storage_directory=_CUSTOM_MODEL,
-            user_network_directory=_CUSTOM_MODEL,
-            recog_network="custom",
-        )
-        return reader, "custom"
+    import torch
 
     kwargs = {"gpu": False}
     if os.path.isdir(_BUNDLE_MODEL):
         kwargs["model_storage_directory"] = _BUNDLE_MODEL
 
     reader = easyocr.Reader(["ko"], **kwargs)
+
+    # 파인튜닝된 가중치가 있으면 인식 모델만 교체
+    custom_pth = os.path.join(_CUSTOM_MODEL, "korean_g2.pth")
+    if os.path.isfile(custom_pth):
+        try:
+            state = torch.load(custom_pth, map_location="cpu", weights_only=False)
+            reader.recognizer.load_state_dict(state)
+            return reader, "custom"
+        except Exception as e:
+            # 가중치 불일치 등 오류 시 기본 모델 사용
+            import sys
+            print(f"[경고] 파인튜닝 모델 로드 실패: {e}", file=sys.stderr)
+
     return reader, "default"
 
 
