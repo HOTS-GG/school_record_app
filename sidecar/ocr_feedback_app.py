@@ -7,12 +7,59 @@ OCR 피드백 도구 (독립 실행형)
   오른쪽 : 번호 대응 인식 결과 (수정 가능) + 저장
 """
 
-import sys, os, json, datetime, tkinter as tk
+import sys, os, json, datetime, hashlib, sqlite3, tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 
 _SCRIPT_DIR       = Path(__file__).parent
 _CORRECTIONS_FILE = _SCRIPT_DIR / "corrections.jsonl"
+
+
+# ── DB 저장 (원래 프로그램과 공유) ───────────────────────────────
+
+def _img_hash(path: str) -> str:
+    """Tauri 앱의 sha256_short()과 동일 — UTF-8 경로 SHA-256 앞 16자리"""
+    return hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
+
+def save_to_db(db_path: str, image_path: str, results: list, cvars: list) -> int:
+    """
+    OcrSession + OcrResult 테이블에 저장.
+    corrected_text가 있는 항목만 corrected_at을 기록하고
+    나머지는 corrected_text=NULL로 저장 (Tauri의 get_ocr_history에 표시됨).
+    반환값: 교정 항목 수
+    """
+    img_hash = _img_hash(image_path)
+    now_iso  = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON;")
+        cur = conn.execute(
+            "INSERT INTO OcrSession (image_path, image_hash, created_at) VALUES (?,?,?)",
+            (image_path, img_hash, now_iso),
+        )
+        session_id = cur.lastrowid
+        count = 0
+        for i, r in enumerate(results):
+            corrected = cvars[i].get().strip()
+            changed   = corrected and corrected != r["text"]
+            conn.execute(
+                """INSERT INTO OcrResult
+                   (session_id, raw_text, corrected_text, confidence, bbox, text_type, corrected_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    session_id,
+                    r["text"],
+                    corrected if changed else None,
+                    r["confidence"],
+                    json.dumps(r["bbox"]),
+                    "unknown",
+                    now_iso if changed else None,
+                ),
+            )
+            if changed:
+                count += 1
+        conn.commit()
+    return count
 
 # ── EasyOCR 로드 ─────────────────────────────────────────────────
 _reader = None
@@ -68,13 +115,14 @@ class App(tk.Tk):
         self.configure(bg="#f3f4f6")
 
         self._img_path   = None
-        self._pil_img    = None   # 원본 PIL Image
-        self._tk_img     = None   # PhotoImage (GC 방지용 참조 유지)
+        self._pil_img    = None
+        self._tk_img     = None
         self._results    = []
-        self._cvars      = []     # 교정 StringVar 목록
+        self._cvars      = []
         self._scale      = 1.0
-        self._img_ox     = 0      # 캔버스 내 이미지 왼쪽 여백
-        self._img_oy     = 0      # 캔버스 내 이미지 위쪽 여백
+        self._img_ox     = 0
+        self._img_oy     = 0
+        self._db_path    = None   # 연결된 프로젝트 DB 경로
 
         self._build_ui()
 
@@ -94,7 +142,14 @@ class App(tk.Tk):
         self._btn_run  = btn(bar, "▶ OCR 실행",  self._ocr,  "#10b981", tk.DISABLED)
         self._btn_run.pack(side=tk.LEFT, padx=(0,6))
         self._btn_save = btn(bar, "💾 교정 저장", self._save, "#f59e0b", tk.DISABLED)
-        self._btn_save.pack(side=tk.LEFT)
+        self._btn_save.pack(side=tk.LEFT, padx=(0,18))
+
+        # DB 연결 영역 (오른쪽 정렬)
+        self._db_var = tk.StringVar(value="프로젝트 미연결")
+        tk.Label(bar, textvariable=self._db_var,
+                 bg="#1e293b", fg="#f97316",
+                 font=("Segoe UI", 9, "bold")).pack(side=tk.RIGHT, padx=(0,8))
+        btn(bar, "🔗 프로젝트 연결", self._connect_db, "#475569").pack(side=tk.RIGHT, padx=(0,4))
 
         self._status = tk.StringVar(value="이미지를 선택하세요.")
         tk.Label(bar, textvariable=self._status,
@@ -217,6 +272,31 @@ class App(tk.Tk):
                                       anchor=tk.NW, fill="white",
                                       font=("Arial", 8, "bold"))
 
+    # ── DB 연결 ──────────────────────────────────────────────────
+    def _connect_db(self):
+        path = filedialog.askopenfilename(
+            title="프로젝트 DB 선택 (.db)",
+            filetypes=[("School Record DB", "*.db"), ("모두", "*")],
+        )
+        if not path:
+            return
+        # OcrSession 테이블 존재 여부로 호환 DB인지 확인
+        try:
+            with sqlite3.connect(path) as conn:
+                conn.execute("SELECT 1 FROM OcrSession LIMIT 1")
+            self._db_path = path
+            self._db_var.set(f"✔ {Path(path).name}")
+            # Label 색상을 초록으로
+            for w in self.winfo_children():
+                if isinstance(w, tk.Frame):
+                    for c in w.winfo_children():
+                        if isinstance(c, tk.Label) and c.cget("textvariable") == str(self._db_var):
+                            c.config(fg="#4ade80")
+        except Exception:
+            messagebox.showerror("연결 실패",
+                "선택한 파일이 학교생활기록부 프로젝트 DB가 아닙니다.\n"
+                "앱에서 프로젝트를 열고 저장된 .db 파일을 선택하세요.")
+
     # ── OCR ──────────────────────────────────────────────────────
     def _ocr(self):
         if not self._img_path:
@@ -291,16 +371,31 @@ class App(tk.Tk):
     def _save(self):
         if not self._img_path or not self._results:
             return
-        count = 0
-        for i, r in enumerate(self._results):
-            corrected = self._cvars[i].get().strip()
-            if corrected and corrected != r["text"]:
-                save_correction(self._img_path, r["text"], corrected)
-                count += 1
-        msg = (f"수정된 항목 {count}건 저장 완료\n"
-               f"({_CORRECTIONS_FILE.name})" if count else "수정된 항목이 없습니다.")
-        self._status.set(f"저장 완료 — {count}건")
-        messagebox.showinfo("저장", msg)
+
+        if self._db_path:
+            # ── 프로젝트 DB에 저장 (원래 프로그램이 바로 읽을 수 있음) ──
+            try:
+                count = save_to_db(self._db_path, self._img_path,
+                                   self._results, self._cvars)
+                self._status.set(f"DB 저장 완료 — {count}건 교정")
+                messagebox.showinfo("저장 완료",
+                    f"프로젝트 DB에 저장됐습니다.\n"
+                    f"교정 항목: {count}건 / 전체: {len(self._results)}건\n\n"
+                    f"원래 프로그램의 '데이터셋 내보내기'에서 확인할 수 있습니다.")
+            except Exception as e:
+                messagebox.showerror("DB 저장 실패", str(e))
+        else:
+            # ── DB 미연결 시 corrections.jsonl에 폴백 ──
+            count = 0
+            for i, r in enumerate(self._results):
+                corrected = self._cvars[i].get().strip()
+                if corrected and corrected != r["text"]:
+                    save_correction(self._img_path, r["text"], corrected)
+                    count += 1
+            self._status.set(f"파일 저장 완료 — {count}건")
+            messagebox.showinfo("저장 완료",
+                f"corrections.jsonl에 저장됐습니다 ({count}건).\n\n"
+                "⚠ 프로젝트를 연결하면 원래 프로그램과 데이터를 공유할 수 있습니다.")
 
 
 # ── 엔트리포인트 ─────────────────────────────────────────────────
