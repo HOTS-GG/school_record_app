@@ -13,22 +13,13 @@ set AIHUB_PATH=
 set /p AIHUB_PATH="AI-Hub path: "
 
 if "%AIHUB_PATH%"=="" (
-    echo.
-    echo  Path cannot be empty. Please enter the AI-Hub folder path.
-    echo.
-    goto ask_path
-)
-
-if not exist "%AIHUB_PATH%" (
-    echo.
-    echo  Folder not found: %AIHUB_PATH%
-    echo  Please check the path and try again.
+    echo  Path cannot be empty. Please try again.
     echo.
     goto ask_path
 )
 
 echo.
-echo Max samples to use (default 50000, more = longer training):
+echo Max samples (default 50000):
 set /p MAX_EXTRA="Max samples [50000]: "
 if "%MAX_EXTRA%"=="" set MAX_EXTRA=50000
 
@@ -38,19 +29,16 @@ set /p EPOCHS="Epochs [15]: "
 if "%EPOCHS%"=="" set EPOCHS=15
 
 echo.
-echo ============================================
-echo  AI-Hub : %AIHUB_PATH%
-echo  Samples: %MAX_EXTRA%
-echo  Epochs : %EPOCHS%
-echo ============================================
+echo Starting fine-tuning...
 echo.
 
-python -X utf8 "%~dp0fine_tune.py" --extra-data "%AIHUB_PATH%" --max-extra %MAX_EXTRA% --epochs %EPOCHS%
+python -X utf8 "%~dp0fine_tune.py" --extra-data %AIHUB_PATH% --max-extra %MAX_EXTRA% --epochs %EPOCHS%
 
 echo.
 if %ERRORLEVEL%==0 (
-    echo [OK] Fine-tuning complete! The custom model will be used on the next OCR run.
+    echo [OK] Fine-tuning complete!
 ) else (
     echo [ERROR] Fine-tuning failed. Check the messages above.
 )
+echo.
 pause
