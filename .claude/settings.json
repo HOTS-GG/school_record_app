@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "statusMessage": "최근 변경사항 분석 중...",
+            "command": "$log = (git log --oneline -8 2>$null) -join \"`n\"; $docs = if (Test-Path docs) { (Get-ChildItem docs -Filter '*.md' | Select-Object -ExpandProperty Name) -join ', ' } else { '없음' }; $ctx = \"[자동 분석] 새 세션이 시작되었습니다.`n`n최근 커밋:`n$log`n`n계획 문서(docs/): $docs`n`n---`n위 내용을 바탕으로 다음을 자동으로 수행하세요:`n1. 최근 커밋에서 변경된 기능 요약`n2. docs/ 계획 문서와의 연관성 분석`n3. 다음 설계 또는 구현 단계 제시\"; @{hookSpecificOutput=@{hookEventName='SessionStart';additionalContext=$ctx}} | ConvertTo-Json -Compress"
+          }
+        ]
+      }
+    ]
+  }
+}
