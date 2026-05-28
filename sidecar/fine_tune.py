@@ -64,33 +64,92 @@ def load_corrections(db_path: str) -> list[dict]:
     return samples
 
 
-# ── AI-Hub 디렉토리에서 추가 데이터 로드 ─────────────────────────
+# ── AI-Hub 데이터 로드 ───────────────────────────────────────────
 def load_aihub_data(data_dir: str) -> list[dict]:
     """
-    AI-Hub 손글씨 데이터 구조 예시:
+    AI-Hub 손글씨 OCR 데이터셋 (데이터셋 #131 등) 로드.
+
+    지원하는 두 가지 구조:
+
+    [구조 A] AI-Hub 표준 JSON 어노테이션 형식
+      <data_dir>/
+        Training/Images/kor_1_1_00001.jpg
+        Training/Annotations/kor_1_1_00001.json
+          {"annotations": [{"text": "안녕", "bbox": [x,y,w,h]}, ...]}
+      (Validation/ 도 같은 구조)
+
+    [구조 B] 단순 이미지+텍스트 쌍 (직접 준비한 경우)
       <data_dir>/
         images/0001.png
-        labels/0001.txt   (한 줄 = 텍스트)
-    또는 images 와 같은 위치에 images/<id>.png + labels/<id>.txt
+        labels/0001.txt   (첫 줄 = 레이블)
     """
     samples = []
     data_dir = Path(data_dir)
-    img_dir  = data_dir / "images"
-    lbl_dir  = data_dir / "labels"
-    if not img_dir.is_dir() or not lbl_dir.is_dir():
-        print(f"[경고] AI-Hub 디렉토리 구조가 올바르지 않습니다: {data_dir}")
-        print("       images/ 와 labels/ 서브디렉토리가 필요합니다.")
+
+    # ── 구조 A: AI-Hub JSON 어노테이션 ──
+    json_found = False
+    for split in ("Training", "Validation", ""):
+        base   = data_dir / split if split else data_dir
+        ann_dir = base / "Annotations"
+        img_dir = base / "Images"
+        if not ann_dir.is_dir() or not img_dir.is_dir():
+            continue
+        json_found = True
+        for ann_file in sorted(ann_dir.rglob("*.json")):
+            try:
+                ann = json.loads(ann_file.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+
+            # 이미지 파일 찾기 (stem 동일)
+            img_file = img_dir / (ann_file.stem + ".jpg")
+            if not img_file.exists():
+                img_file = img_dir / (ann_file.stem + ".png")
+            if not img_file.exists():
+                # rglob 으로 하위 폴더 탐색
+                hits = list(img_dir.rglob(ann_file.stem + ".*"))
+                img_file = hits[0] if hits else None
+            if not img_file:
+                continue
+
+            annotations = ann.get("annotations") or ann.get("label") or []
+            if isinstance(annotations, dict):
+                annotations = [annotations]
+
+            for item in annotations:
+                text = (item.get("text") or item.get("label") or "").strip()
+                if not text:
+                    continue
+                bbox_raw = item.get("bbox") or item.get("boundingBox")
+                if bbox_raw and len(bbox_raw) == 4:
+                    x, y, w, h = bbox_raw
+                    bbox = (int(x), int(y), int(x + w), int(y + h))
+                else:
+                    bbox = None   # 이미지 전체가 한 단어 크롭인 경우
+                samples.append({"image_path": str(img_file), "bbox": bbox, "label": text})
+
+    if json_found:
         return samples
 
-    for img_file in sorted(img_dir.glob("*.png")):
+    # ── 구조 B: 단순 images/ + labels/ ──
+    img_dir = data_dir / "images"
+    lbl_dir = data_dir / "labels"
+    if not img_dir.is_dir() or not lbl_dir.is_dir():
+        print(f"[경고] AI-Hub 데이터 디렉토리 구조를 인식하지 못했습니다: {data_dir}")
+        print("       Training/Images + Training/Annotations  또는")
+        print("       images/ + labels/  구조를 지원합니다.")
+        return samples
+
+    for img_file in sorted(img_dir.glob("*")):
+        if img_file.suffix.lower() not in (".png", ".jpg", ".jpeg", ".bmp"):
+            continue
         lbl_file = lbl_dir / (img_file.stem + ".txt")
         if not lbl_file.exists():
             continue
         label = lbl_file.read_text(encoding="utf-8").strip().splitlines()[0].strip()
-        if not label:
-            continue
-        # AI-Hub 전체 이미지 → bbox 없음 (이미지 전체가 한 샘플)
-        samples.append({"image_path": str(img_file), "bbox": None, "label": label})
+        if label:
+            samples.append({"image_path": str(img_file), "bbox": None, "label": label})
+
     return samples
 
 
