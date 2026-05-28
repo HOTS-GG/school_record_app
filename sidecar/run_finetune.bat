@@ -1,25 +1,26 @@
 @echo off
-chcp 65001 > nul
 echo ============================================
-echo  EasyOCR 한국어 파인튜닝 도구
+echo  EasyOCR Fine-Tuning Tool
 echo ============================================
 echo.
 
-if "%~1"=="" (
-    echo 사용법: run_finetune.bat <project.db> [epochs] [batch]
+set DB_PATH=%~1
+set EPOCHS=%~2
+set BATCH=%~3
+
+if "%DB_PATH%"=="" (
+    echo Usage: run_finetune.bat ^<project.db^> [epochs] [batch_size]
     echo.
-    echo 예시:
-    echo   run_finetune.bat "C:\Users\user\docs\학교기록.db"
-    echo   run_finetune.bat "C:\Users\user\docs\학교기록.db" 20 16
+    echo Example:
+    echo   run_finetune.bat "C:\Users\user\docs\school.db"
+    echo   run_finetune.bat "C:\Users\user\docs\school.db" 20 16
     echo.
-    echo DB 파일을 이 창으로 드래그해서 놓으세요:
-    set /p DB_PATH="DB 경로: "
-) else (
-    set DB_PATH=%~1
+    echo Drag and drop the .db file here, or type the path:
+    set /p DB_PATH="DB path: "
 )
 
-if "%~2"=="" (set EPOCHS=15) else (set EPOCHS=%~2)
-if "%~3"=="" (set BATCH=32)  else (set BATCH=%~3)
+if "%EPOCHS%"=="" set EPOCHS=15
+if "%BATCH%"=="" set BATCH=32
 
 echo.
 echo DB     : %DB_PATH%
@@ -31,8 +32,8 @@ python -X utf8 "%~dp0fine_tune.py" --db "%DB_PATH%" --epochs %EPOCHS% --batch %B
 
 echo.
 if %ERRORLEVEL%==0 (
-    echo [완료] 파인튜닝 성공! 다음 OCR 실행 시 학습된 모델이 적용됩니다.
+    echo [OK] Fine-tuning complete! The custom model will be used on the next OCR run.
 ) else (
-    echo [오류] 파인튜닝 실패. 위 메시지를 확인하세요.
+    echo [ERROR] Fine-tuning failed. Check the messages above.
 )
 pause
