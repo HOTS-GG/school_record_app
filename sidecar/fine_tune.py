@@ -2,21 +2,27 @@
 EasyOCR 한국어 인식 모델 파인튜닝 스크립트
 
 사용법:
-  python fine_tune.py --db <project.db> [--epochs 10] [--batch 32] [--lr 1e-4]
-  python fine_tune.py --db <project.db> --extra-data <aihub_dir>
+  python fine_tune.py --db <project.db> [--epochs 15] [--batch 32] [--lr 1e-4]
+  python fine_tune.py --db <project.db> --extra-data <aihub_dir> [--max-extra 50000]
 
 출력: sidecar/custom_model/korean_g2.pth  (사이드카가 자동으로 로드)
 
-아키텍처: EasyOCR generation2 (VGG + BiLSTM + CTC)
-  - 입력: 32×128 grayscale
-  - CTC loss 로 end-to-end 학습
+AI-Hub 데이터 경로 예시:
+  D:\School-record-app\writeDB\다양한 형태의 한글 문자 OCR
+
+  → Training/[원천]Training_필기체.zip  (이미지)
+  → Training/[라벨]Training_필기체.zip  (JSON 레이블)
+  압축 해제 없이 zip 내부에서 직접 읽습니다.
 """
 
 import argparse
+import io
 import json
 import os
+import random
 import sqlite3
 import sys
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -31,124 +37,121 @@ _CUSTOM_DIR  = _SCRIPT_DIR / "custom_model"
 _BUNDLE_DIR  = _SCRIPT_DIR / "models"
 _OUTPUT_PATH = _CUSTOM_DIR / "korean_g2.pth"
 
-# EasyOCR 모델 캐시 경로 오버라이드
 if _BUNDLE_DIR.is_dir():
     os.environ["EASYOCR_MODULE_PATH"] = str(_BUNDLE_DIR)
 
 
-# ── DB 에서 교정 데이터 로드 ──────────────────────────────────────
+# ── DB 교정 데이터 로드 ───────────────────────────────────────────
 def load_corrections(db_path: str) -> list[dict]:
-    """OcrResult 중 corrected_text 가 있는 행 + 원본 이미지 경로를 반환."""
     conn = sqlite3.connect(db_path)
     rows = conn.execute("""
-        SELECT r.bbox, r.raw_text, r.corrected_text,
-               s.image_path
+        SELECT r.bbox, r.corrected_text, s.image_path
         FROM   OcrResult r
         JOIN   OcrSession s ON s.id = r.session_id
-        WHERE  r.corrected_text IS NOT NULL
-          AND  r.corrected_text != ''
+        WHERE  r.corrected_text IS NOT NULL AND r.corrected_text != ''
     """).fetchall()
     conn.close()
 
     samples = []
-    for bbox_json, raw, corrected, img_path in rows:
+    for bbox_json, corrected, img_path in rows:
         try:
             bbox = json.loads(bbox_json)
             x1, y1, x2, y2 = int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])
         except Exception:
             continue
         label = corrected.strip()
-        if not label:
-            continue
-        samples.append({"image_path": img_path, "bbox": (x1, y1, x2, y2), "label": label})
+        if label:
+            samples.append({"kind": "file", "path": img_path,
+                            "bbox": (x1, y1, x2, y2), "label": label})
     return samples
 
 
-# ── AI-Hub 데이터 로드 ───────────────────────────────────────────
-def load_aihub_data(data_dir: str) -> list[dict]:
+# ── AI-Hub zip 데이터 로드 ────────────────────────────────────────
+def load_aihub_data(data_dir: str, max_samples: int | None = None) -> list[dict]:
     """
-    AI-Hub 손글씨 OCR 데이터셋 (데이터셋 #131 등) 로드.
+    AI-Hub '다양한 형태의 한글 문자 OCR' 데이터셋 로드.
 
-    지원하는 두 가지 구조:
+    구조:
+      <data_dir>/Training/[원천]Training_필기체.zip  → 이미지
+      <data_dir>/Training/[라벨]Training_필기체.zip  → JSON 레이블
 
-    [구조 A] AI-Hub 표준 JSON 어노테이션 형식
-      <data_dir>/
-        Training/Images/kor_1_1_00001.jpg
-        Training/Annotations/kor_1_1_00001.json
-          {"annotations": [{"text": "안녕", "bbox": [x,y,w,h]}, ...]}
-      (Validation/ 도 같은 구조)
+    JSON 형식:
+      { "info": {"text": "가"}, "image": {"file_name": "00130001001.jpg"}, ... }
+      레이블은 info.text 또는 text.letter.value
 
-    [구조 B] 단순 이미지+텍스트 쌍 (직접 준비한 경우)
-      <data_dir>/
-        images/0001.png
-        labels/0001.txt   (첫 줄 = 레이블)
+    zip 압축 해제 없이 직접 읽습니다.
     """
-    samples = []
     data_dir = Path(data_dir)
+    samples  = []
 
-    # ── 구조 A: AI-Hub JSON 어노테이션 ──
-    json_found = False
-    for split in ("Training", "Validation", ""):
-        base   = data_dir / split if split else data_dir
-        ann_dir = base / "Annotations"
-        img_dir = base / "Images"
-        if not ann_dir.is_dir() or not img_dir.is_dir():
+    for split in ("Training", "Validation"):
+        split_dir = data_dir / split
+        if not split_dir.is_dir():
             continue
-        json_found = True
-        for ann_file in sorted(ann_dir.rglob("*.json")):
-            try:
-                ann = json.loads(ann_file.read_text(encoding="utf-8"))
-            except Exception:
-                continue
 
-            # 이미지 파일 찾기 (stem 동일)
-            img_file = img_dir / (ann_file.stem + ".jpg")
-            if not img_file.exists():
-                img_file = img_dir / (ann_file.stem + ".png")
-            if not img_file.exists():
-                # rglob 으로 하위 폴더 탐색
-                hits = list(img_dir.rglob(ann_file.stem + ".*"))
-                img_file = hits[0] if hits else None
-            if not img_file:
-                continue
+        # zip 파일 쌍 찾기: [원천]..._필기체.zip / [라벨]..._필기체.zip
+        src_zip = lbl_zip = None
+        for f in split_dir.iterdir():
+            name = f.name
+            if "원천" in name and "필기체" in name and name.endswith(".zip"):
+                src_zip = f
+            elif "라벨" in name and "필기체" in name and name.endswith(".zip"):
+                lbl_zip = f
 
-            annotations = ann.get("annotations") or ann.get("label") or []
-            if isinstance(annotations, dict):
-                annotations = [annotations]
+        if not src_zip or not lbl_zip:
+            print(f"[경고] {split}/ 에서 필기체 zip 파일을 찾지 못했습니다.")
+            continue
 
-            for item in annotations:
-                text = (item.get("text") or item.get("label") or "").strip()
-                if not text:
+        print(f"  [{split}] 레이블 zip 인덱싱 중… ({lbl_zip.name})")
+        label_map: dict[str, str] = {}   # stem → label text
+
+        with zipfile.ZipFile(lbl_zip, "r") as zl:
+            json_names = [n for n in zl.namelist()
+                          if n.endswith(".json") and not n.endswith("/")]
+            for jname in json_names:
+                try:
+                    raw  = zl.read(jname)
+                    ann  = json.loads(raw.decode("utf-8"))
+                    text = (ann.get("info", {}).get("text")
+                            or ann.get("text", {}).get("letter", {}).get("value")
+                            or "").strip()
+                    if text:
+                        stem = Path(jname).stem
+                        label_map[stem] = text
+                except Exception:
                     continue
-                bbox_raw = item.get("bbox") or item.get("boundingBox")
-                if bbox_raw and len(bbox_raw) == 4:
-                    x, y, w, h = bbox_raw
-                    bbox = (int(x), int(y), int(x + w), int(y + h))
-                else:
-                    bbox = None   # 이미지 전체가 한 단어 크롭인 경우
-                samples.append({"image_path": str(img_file), "bbox": bbox, "label": text})
 
-    if json_found:
+        print(f"  [{split}] 이미지 zip 스캔 중… ({src_zip.name})")
+        split_samples: list[dict] = []
+        with zipfile.ZipFile(src_zip, "r") as zi:
+            img_names = [n for n in zi.namelist()
+                         if n.lower().endswith((".jpg", ".png"))
+                         and not n.endswith("/")]
+            for iname in img_names:
+                stem  = Path(iname).stem
+                label = label_map.get(stem)
+                if not label:
+                    continue
+                split_samples.append({
+                    "kind":     "zip",
+                    "zip_path": str(src_zip),
+                    "zip_name": iname,
+                    "bbox":     None,
+                    "label":    label,
+                })
+
+        print(f"  [{split}] {len(split_samples):,}건 발견")
+        samples.extend(split_samples)
+
+    if not samples:
+        print("[경고] AI-Hub 데이터를 찾지 못했습니다.")
         return samples
 
-    # ── 구조 B: 단순 images/ + labels/ ──
-    img_dir = data_dir / "images"
-    lbl_dir = data_dir / "labels"
-    if not img_dir.is_dir() or not lbl_dir.is_dir():
-        print(f"[경고] AI-Hub 데이터 디렉토리 구조를 인식하지 못했습니다: {data_dir}")
-        print("       Training/Images + Training/Annotations  또는")
-        print("       images/ + labels/  구조를 지원합니다.")
-        return samples
-
-    for img_file in sorted(img_dir.glob("*")):
-        if img_file.suffix.lower() not in (".png", ".jpg", ".jpeg", ".bmp"):
-            continue
-        lbl_file = lbl_dir / (img_file.stem + ".txt")
-        if not lbl_file.exists():
-            continue
-        label = lbl_file.read_text(encoding="utf-8").strip().splitlines()[0].strip()
-        if label:
-            samples.append({"image_path": str(img_file), "bbox": None, "label": label})
+    # 무작위로 max_samples 만큼 추출
+    if max_samples and len(samples) > max_samples:
+        random.shuffle(samples)
+        samples = samples[:max_samples]
+        print(f"  → {max_samples:,}건으로 제한")
 
     return samples
 
@@ -157,73 +160,99 @@ def load_aihub_data(data_dir: str) -> list[dict]:
 _IMG_H = 32
 _IMG_W = 128
 
-def crop_and_resize(image_path: str, bbox: tuple | None) -> np.ndarray | None:
-    """
-    이미지를 로드, bbox 영역을 잘라 32×128 grayscale 로 리사이즈.
-    bbox=None 이면 이미지 전체를 사용.
-    반환: shape (1, 32, 128) float32 in [0, 1]
-    """
+def _open_image(sample: dict) -> Image.Image | None:
+    """sample dict 에서 PIL Image 반환."""
     try:
-        img = Image.open(image_path).convert("L")   # grayscale
-        if bbox is not None:
-            x1, y1, x2, y2 = bbox
-            w, h = img.size
-            x1 = max(0, min(x1, w)); x2 = max(0, min(x2, w))
-            y1 = max(0, min(y1, h)); y2 = max(0, min(y2, h))
-            if x2 <= x1 or y2 <= y1:
-                return None
-            img = img.crop((x1, y1, x2, y2))
-
-        # 종횡비 유지 리사이즈
-        ow, oh = img.size
-        ratio = _IMG_H / oh
-        nw    = min(int(ow * ratio), _IMG_W)
-        img   = img.resize((nw, _IMG_H), Image.BICUBIC)
-
-        # 패딩 (오른쪽에 흰색)
-        canvas = Image.new("L", (_IMG_W, _IMG_H), 255)
-        canvas.paste(img, (0, 0))
-        arr = np.array(canvas, dtype=np.float32) / 255.0   # [0,1]
-        arr = (arr - 0.5) / 0.5                            # [-1,1]
-        return arr[np.newaxis, ...]   # (1, H, W)
+        if sample["kind"] == "zip":
+            with zipfile.ZipFile(sample["zip_path"], "r") as z:
+                data = z.read(sample["zip_name"])
+            return Image.open(io.BytesIO(data)).convert("L")
+        else:
+            return Image.open(sample["path"]).convert("L")
     except Exception as e:
-        print(f"[경고] 이미지 처리 실패: {image_path} — {e}")
         return None
+
+
+def crop_and_resize(sample: dict) -> np.ndarray | None:
+    img = _open_image(sample)
+    if img is None:
+        return None
+
+    bbox = sample.get("bbox")
+    if bbox is not None:
+        x1, y1, x2, y2 = bbox
+        w, h = img.size
+        x1 = max(0, min(x1, w)); x2 = max(0, min(x2, w))
+        y1 = max(0, min(y1, h)); y2 = max(0, min(y2, h))
+        if x2 <= x1 or y2 <= y1:
+            return None
+        img = img.crop((x1, y1, x2, y2))
+
+    ow, oh = img.size
+    nw = min(int(ow * (_IMG_H / oh)), _IMG_W)
+    img = img.resize((nw, _IMG_H), Image.BICUBIC)
+
+    canvas = Image.new("L", (_IMG_W, _IMG_H), 255)
+    canvas.paste(img, (0, 0))
+    arr = np.array(canvas, dtype=np.float32) / 255.0
+    arr = (arr - 0.5) / 0.5
+    return arr[np.newaxis, ...]   # (1, H, W)
 
 
 # ── Dataset ──────────────────────────────────────────────────────
 class CorrectionDataset(Dataset):
     def __init__(self, samples: list[dict], character: str):
-        self.char_to_idx = {c: i + 1 for i, c in enumerate(character)}   # 0=blank
-        self.items = []
+        self.char_to_idx = {c: i + 1 for i, c in enumerate(character)}
+        self.items: list[tuple] = []
         skipped = 0
+
+        # DB 교정 데이터 (건수가 적으므로 미리 로드)
         for s in samples:
-            img = crop_and_resize(s["image_path"], s["bbox"])
-            if img is None:
+            if s["kind"] != "file":
+                continue
+            arr = crop_and_resize(s)
+            if arr is None:
                 skipped += 1
                 continue
-            label_idx = [self.char_to_idx[c] for c in s["label"] if c in self.char_to_idx]
-            if not label_idx:
+            idx = [self.char_to_idx[c] for c in s["label"] if c in self.char_to_idx]
+            if not idx:
                 skipped += 1
                 continue
-            self.items.append((img, label_idx, s["label"]))
+            self.items.append((arr, idx, s["label"]))
+
+        # AI-Hub 데이터는 (sample_dict, label) 만 저장 후 __getitem__ 에서 lazy load
+        self.lazy: list[dict] = [
+            s for s in samples if s["kind"] == "zip"
+        ]
+        # lazy 검증: 레이블에 미지원 문자 있는 것 필터
+        self.lazy = [s for s in self.lazy
+                     if any(c in self.char_to_idx for c in s["label"])]
+
         if skipped:
-            print(f"  → {skipped}개 샘플 건너뜀 (이미지 오류 또는 미지원 문자)")
+            print(f"  → {skipped}건 건너뜀 (이미지 오류 또는 미지원 문자)")
 
     def __len__(self):
-        return len(self.items)
+        return len(self.items) + len(self.lazy)
 
     def __getitem__(self, idx):
-        img, label_idx, label_str = self.items[idx]
-        return torch.tensor(img, dtype=torch.float32), label_idx, label_str
+        if idx < len(self.items):
+            arr, label_idx, label_str = self.items[idx]
+            return torch.tensor(arr, dtype=torch.float32), label_idx, label_str
+
+        s   = self.lazy[idx - len(self.items)]
+        arr = crop_and_resize(s)
+        if arr is None:
+            arr = np.zeros((1, _IMG_H, _IMG_W), dtype=np.float32)
+        label_idx = [self.char_to_idx[c] for c in s["label"] if c in self.char_to_idx]
+        return torch.tensor(arr, dtype=torch.float32), label_idx, s["label"]
 
 
 def collate_fn(batch):
     imgs, labels, label_strs = zip(*batch)
-    imgs = torch.stack(imgs)
+    imgs    = torch.stack(imgs)
     lengths = torch.tensor([len(l) for l in labels], dtype=torch.long)
-    flat_labels = torch.tensor([c for l in labels for c in l], dtype=torch.long)
-    return imgs, flat_labels, lengths, label_strs
+    flat    = torch.tensor([c for l in labels for c in l], dtype=torch.long)
+    return imgs, flat, lengths, label_strs
 
 
 # ── 학습 루프 ─────────────────────────────────────────────────────
@@ -233,96 +262,68 @@ def train(args):
     if device.type == "cuda":
         print(f"       GPU: {torch.cuda.get_device_name(0)}")
 
-    # ── EasyOCR 로더로 모델 + 문자셋 초기화 ──
     print("[정보] EasyOCR 모델 로드 중…")
     import easyocr
-    from easyocr.recognition import get_recognizer, CTCLabelConverter
 
     model_dir = str(_BUNDLE_DIR) if _BUNDLE_DIR.is_dir() else None
-    reader_tmp = easyocr.Reader(
-        ["ko", "en"],
-        gpu=(device.type == "cuda"),
-        model_storage_directory=model_dir,
-        verbose=False,
-    )
-    character   = reader_tmp.character
-    converter   = reader_tmp.converter
-    recognizer  = reader_tmp.recognizer   # DataParallel wrapper
-
-    # DataParallel 내부 모델 꺼내기
-    if hasattr(recognizer, "module"):
-        model = recognizer.module
-    else:
-        model = recognizer
+    reader = easyocr.Reader(["ko", "en"], gpu=(device.type == "cuda"),
+                            model_storage_directory=model_dir, verbose=False)
+    character  = reader.character
+    recognizer = reader.recognizer
+    model = recognizer.module if hasattr(recognizer, "module") else recognizer
     model = model.to(device)
     model.train()
 
-    # ── 데이터 로드 ──
-    print("[정보] 교정 데이터 로드 중…")
+    print("[정보] 데이터 로드 중…")
     samples = load_corrections(args.db)
     print(f"  → DB 교정 데이터: {len(samples)}건")
 
     if args.extra_data:
-        extra = load_aihub_data(args.extra_data)
-        print(f"  → AI-Hub 추가 데이터: {len(extra)}건")
+        extra = load_aihub_data(args.extra_data, args.max_extra)
+        print(f"  → AI-Hub 데이터: {len(extra)}건")
         samples += extra
 
     if not samples:
-        print("[오류] 학습 데이터가 없습니다. DB에 교정 데이터를 먼저 입력하세요.")
+        print("[오류] 학습 데이터가 없습니다.")
         sys.exit(1)
 
     dataset = CorrectionDataset(samples, character)
-    print(f"  → 유효 샘플: {len(dataset)}건")
+    print(f"  → 전체 유효 샘플: {len(dataset):,}건")
 
     if len(dataset) == 0:
         print("[오류] 유효한 샘플이 없습니다.")
         sys.exit(1)
 
-    loader = DataLoader(
-        dataset,
-        batch_size=min(args.batch, len(dataset)),
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=0,
-    )
+    loader = DataLoader(dataset, batch_size=min(args.batch, len(dataset)),
+                        shuffle=True, collate_fn=collate_fn,
+                        num_workers=0, pin_memory=(device.type == "cuda"))
 
-    # ── 옵티마이저 ──
-    # SequenceModeling + Prediction만 빠른 학습률; FeatureExtraction은 낮게
-    feat_params = list(model.FeatureExtraction.parameters())
-    other_params = (
-        list(model.SequenceModeling.parameters()) +
-        list(model.Prediction.parameters())
-    )
+    feat_params  = list(model.FeatureExtraction.parameters())
+    other_params = (list(model.SequenceModeling.parameters()) +
+                    list(model.Prediction.parameters()))
     optimizer = torch.optim.AdamW([
         {"params": feat_params,  "lr": args.lr * 0.1},
         {"params": other_params, "lr": args.lr},
     ], weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs, eta_min=args.lr * 0.01
-    )
+        optimizer, T_max=args.epochs, eta_min=args.lr * 0.01)
     criterion = nn.CTCLoss(blank=0, reduction="mean", zero_infinity=True)
 
-    # ── 학습 ──
-    print(f"\n[학습 시작] epochs={args.epochs}, batch={args.batch}, lr={args.lr}")
+    print(f"\n[학습 시작] epochs={args.epochs}  batch={args.batch}  lr={args.lr}")
     best_loss = float("inf")
 
     for epoch in range(1, args.epochs + 1):
-        total_loss = 0.0
-        n_batches  = 0
-
+        total_loss = n_batches = 0
         for imgs, flat_labels, lengths, _ in loader:
             imgs        = imgs.to(device)
             flat_labels = flat_labels.to(device)
 
-            # forward
-            preds = model(imgs, flat_labels)   # (T, B, num_class)
-            preds = preds.log_softmax(2).permute(1, 0, 2)   # (T, B, C) for CTC
-
-            T          = preds.size(0)
+            preds = model(imgs, flat_labels)
+            preds = preds.log_softmax(2).permute(1, 0, 2)
+            T     = preds.size(0)
             input_lens = torch.full((imgs.size(0),), T, dtype=torch.long)
 
             loss = criterion(preds, flat_labels, input_lens, lengths)
-
             optimizer.zero_grad()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -333,37 +334,42 @@ def train(args):
 
         scheduler.step()
         avg_loss = total_loss / max(n_batches, 1)
-        lr_now   = optimizer.param_groups[1]["lr"]
-        print(f"  Epoch {epoch:3d}/{args.epochs} | loss={avg_loss:.4f} | lr={lr_now:.2e}")
+        print(f"  Epoch {epoch:3d}/{args.epochs} | loss={avg_loss:.4f}"
+              f" | lr={optimizer.param_groups[1]['lr']:.2e}", end="")
 
         if avg_loss < best_loss:
             best_loss = avg_loss
             _save_model(model, device)
-            print(f"           → 모델 저장 (loss 개선)")
+            print("  [저장]")
+        else:
+            print()
 
-    print(f"\n[완료] 최적 모델 저장 위치: {_OUTPUT_PATH}")
-    print("       다음 번 OCR 실행 시 자동으로 파인튜닝된 모델을 사용합니다.")
+    print(f"\n[완료] 모델 저장: {_OUTPUT_PATH}")
+    print("       다음 OCR 실행 시 자동으로 적용됩니다.")
 
 
 def _save_model(model: nn.Module, device: torch.device):
     _CUSTOM_DIR.mkdir(parents=True, exist_ok=True)
-    # DataParallel 형태로 저장 (EasyOCR 로드 형식과 일치)
     wrapped = nn.DataParallel(model).to(device)
     torch.save(wrapped.state_dict(), str(_OUTPUT_PATH))
 
 
 # ── CLI ──────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="EasyOCR 한국어 파인튜닝")
-    parser.add_argument("--db",         required=True,  help="프로젝트 DB 경로 (.db)")
-    parser.add_argument("--extra-data", default=None,   help="AI-Hub 추가 데이터 디렉토리")
-    parser.add_argument("--epochs",     type=int,   default=15,   help="에폭 수 (기본: 15)")
-    parser.add_argument("--batch",      type=int,   default=32,   help="배치 크기 (기본: 32)")
-    parser.add_argument("--lr",         type=float, default=1e-4, help="학습률 (기본: 1e-4)")
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="EasyOCR 한국어 파인튜닝")
+    p.add_argument("--db",         required=True,
+                   help="프로젝트 DB 경로 (.db) — OCR 교정 데이터 출처")
+    p.add_argument("--extra-data", default=None,
+                   help="AI-Hub 데이터 루트 디렉토리 (선택)")
+    p.add_argument("--max-extra",  type=int, default=50000,
+                   help="AI-Hub 에서 최대 사용할 샘플 수 (기본: 50000)")
+    p.add_argument("--epochs",     type=int,   default=15)
+    p.add_argument("--batch",      type=int,   default=32)
+    p.add_argument("--lr",         type=float, default=1e-4)
+    args = p.parse_args()
 
     if not os.path.isfile(args.db):
-        print(f"[오류] DB 파일이 없습니다: {args.db}")
+        print(f"[오류] DB 파일 없음: {args.db}")
         sys.exit(1)
 
     train(args)
