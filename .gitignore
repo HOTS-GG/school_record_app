@@ -29,3 +29,12 @@ dist-ssr
 
 # OCR 모델 파일 (용량 문제로 git 제외, 별도 배포)
 src-tauri/resources/models/*.onnx
+
+# OCR 사이드카
+sidecar/models/
+sidecar/custom_model/
+sidecar/build/
+sidecar/dist/
+sidecar/__pycache__/
+sidecar/*.spec
+sidecar/test_handwriting.png

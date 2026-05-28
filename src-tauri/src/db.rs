@@ -6,7 +6,7 @@ use std::path::Path;
 /// 스키마 변경 시 이 값을 올리고 MIGRATIONS 배열에 SQL을 추가한다.
 /// 중요: 스키마 버전을 올릴 때는 반드시 Cargo.toml의 version(app_version)도 함께 올려야 한다.
 /// app_version이 바뀌지 않으면 릴리즈 노트 모달이 표시되지 않는다.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// 인덱스 i: 버전 i → i+1 로 올리는 SQL.
 /// [0] v0→v1: 버전 도입 이전 DB를 v1으로 승격. 스키마는 IF NOT EXISTS로 생성되어 있으므로 SQL 없음.
@@ -42,6 +42,24 @@ const MIGRATIONS: &[&str] = &[
      ALTER TABLE Student ADD COLUMN behavior TEXT;",
     // v4 → v5: 영역별 행동 항목 커스텀 설정 컬럼 추가
     "ALTER TABLE Area ADD COLUMN behavior_items TEXT;",
+    // v5 → v6: OCR 세션 / 결과 테이블 추가
+    "CREATE TABLE IF NOT EXISTS OcrSession (
+         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+         image_path  TEXT    NOT NULL,
+         image_hash  TEXT    NOT NULL,
+         created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+     );
+     CREATE TABLE IF NOT EXISTS OcrResult (
+         id              INTEGER PRIMARY KEY AUTOINCREMENT,
+         session_id      INTEGER NOT NULL REFERENCES OcrSession(id) ON DELETE CASCADE,
+         raw_text        TEXT    NOT NULL,
+         corrected_text  TEXT,
+         confidence      REAL,
+         bbox            TEXT,
+         text_type       TEXT    NOT NULL DEFAULT 'unknown',
+         corrected_at    TEXT
+     );
+     CREATE INDEX IF NOT EXISTS idx_ocr_result_session ON OcrResult (session_id);",
 ];
 
 // ── 내부 헬퍼 ────────────────────────────────────────────────

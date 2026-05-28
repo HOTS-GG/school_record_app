@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   PenLine,
   Replace,
+  ScanLine,
   ScanSearch,
   Settings,
   Upload,
@@ -81,6 +82,7 @@ const navGroups = [
   {
     items: [
       {id: 'chat', label: 'AI 대화(Chat)', icon: Bot},
+      {id: 'ocr',  label: '손글씨 OCR',   icon: ScanLine},
     ],
   },
 ]

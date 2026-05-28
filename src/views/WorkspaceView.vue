@@ -17,6 +17,7 @@ import ChecklistSection from '../sections/ChecklistSection.vue'
 import ReplaceSection from '../sections/ReplaceSection.vue'
 import InspectSection from '../sections/InspectSection.vue'
 import ChatSection from '../sections/ChatSection.vue'
+import OcrSection from '../sections/OcrSection.vue'
 import SettingsSection from '../sections/SettingsSection.vue'
 import SnapshotModal from '../components/SnapshotModal.vue'
 
@@ -40,6 +41,7 @@ const sectionMap = {
   replace: ReplaceSection,
   inspect: InspectSection,
   chat: ChatSection,
+  ocr: OcrSection,
   settings: SettingsSection,
 }
 

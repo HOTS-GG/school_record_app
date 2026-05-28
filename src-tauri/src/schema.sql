@@ -180,3 +180,27 @@ CREATE TABLE IF NOT EXISTS ChatMessage
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_message_session ON ChatMessage (session_id, created_at);
+
+-- ================================================================
+-- OCR 세션 / 결과 (손글씨 학습 데이터 원천)
+-- ================================================================
+
+CREATE TABLE IF NOT EXISTS OcrSession (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_path  TEXT    NOT NULL,
+    image_hash  TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS OcrResult (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id      INTEGER NOT NULL REFERENCES OcrSession(id) ON DELETE CASCADE,
+    raw_text        TEXT    NOT NULL,
+    corrected_text  TEXT,
+    confidence      REAL,
+    bbox            TEXT,
+    text_type       TEXT    NOT NULL DEFAULT 'unknown',
+    corrected_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ocr_result_session ON OcrResult (session_id);
