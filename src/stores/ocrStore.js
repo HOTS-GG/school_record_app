@@ -8,6 +8,7 @@ export const useOcrStore = defineStore('ocr', () => {
   const error       = ref(null)
   const sessionId   = ref(null)
   const imagePath   = ref(null)
+  const imageDataUrl = ref(null)   // base64 data URL (한글/공백 경로 문제 우회)
   const results     = ref([])   // { id, text, confidence, bbox, text_type, needs_correction, corrected_text }
   const history     = ref([])
 
@@ -20,8 +21,11 @@ export const useOcrStore = defineStore('ocr', () => {
     if (!selected) return
 
     imagePath.value = selected
+    imageDataUrl.value = null
     loading.value   = true
     try {
+      // 이미지 미리보기용 base64 로드 (asset 프로토콜 한글 경로 문제 우회)
+      imageDataUrl.value = await invoke('read_image_base64', { path: selected })
       const resp = await invoke('ocr_image', { imagePath: selected })
       sessionId.value = resp.session_id
       results.value   = resp.results.map((r, i) => ({
@@ -63,14 +67,15 @@ export const useOcrStore = defineStore('ocr', () => {
   }
 
   function reset() {
-    sessionId.value = null
-    imagePath.value = null
-    results.value   = []
-    error.value     = null
+    sessionId.value  = null
+    imagePath.value  = null
+    imageDataUrl.value = null
+    results.value    = []
+    error.value      = null
   }
 
   return {
-    loading, error, sessionId, imagePath, results, history,
+    loading, error, sessionId, imagePath, imageDataUrl, results, history,
     pickAndRun, saveCorrection, loadHistory, exportDataset, reset,
   }
 })

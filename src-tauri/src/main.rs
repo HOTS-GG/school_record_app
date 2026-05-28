@@ -84,6 +84,7 @@ fn main() {
             bulk_import_records,
             preview_import_records,
             write_bytes_file,
+            read_image_base64,
             // 스냅샷
             create_snapshot,
             get_snapshots,

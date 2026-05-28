@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import { useOcrStore } from '../stores/ocrStore'
 import { ScanLine, Upload, AlertTriangle, Download, RotateCcw } from 'lucide-vue-next'
 
@@ -9,11 +8,9 @@ const canvasRef   = ref(null)
 const imgRef      = ref(null)
 const imgLoaded   = ref(false)
 const exportMsg   = ref('')
-const imgSrc      = ref('')
 const copiedIdx   = ref(-1)
 
-watch(() => ocr.imagePath, (path) => {
-  imgSrc.value  = path ? convertFileSrc(path) : ''
+watch(() => ocr.imageDataUrl, () => {
   imgLoaded.value = false
 })
 
@@ -150,7 +147,7 @@ onMounted(() => ocr.loadHistory())
         <div class="image-wrap">
           <img
             ref="imgRef"
-            :src="imgSrc"
+            :src="ocr.imageDataUrl"
             class="ocr-image"
             @load="onImageLoad"
             @error="imgLoaded = false"
