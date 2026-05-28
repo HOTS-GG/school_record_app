@@ -123,7 +123,14 @@ def _load_reader():
 
 # ── OCR 실행 ─────────────────────────────────────────────────────
 def _run_ocr(image_path: str, reader) -> list:
-    raw = reader.readtext(image_path, detail=1, paragraph=False)
+    # cv2.imread()는 Windows에서 한글/특수문자 경로를 읽지 못함
+    # PIL로 읽어 BGR numpy 배열로 변환 후 EasyOCR에 전달
+    import numpy as np
+    from PIL import Image as _PIL_Image
+    img_pil = _PIL_Image.open(image_path).convert("RGB")
+    img_np  = np.array(img_pil)[:, :, ::-1]  # RGB → BGR (EasyOCR/cv2 포맷)
+
+    raw = reader.readtext(img_np, detail=1, paragraph=False)
     results = []
     for (bbox_pts, text, conf) in raw:
         xs = [p[0] for p in bbox_pts]
