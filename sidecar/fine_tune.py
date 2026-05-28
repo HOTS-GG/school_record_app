@@ -312,8 +312,11 @@ def train(args):
     model.train()
 
     print("[정보] 데이터 로드 중…")
-    samples = load_corrections(args.db)
-    print(f"  → DB 교정 데이터: {len(samples)}건")
+    samples = []
+    if args.db:
+        db_samples = load_corrections(args.db)
+        print(f"  → DB 교정 데이터: {len(db_samples)}건")
+        samples += db_samples
 
     if args.extra_data:
         extra = load_aihub_data(args.extra_data, args.max_extra)
@@ -321,7 +324,7 @@ def train(args):
         samples += extra
 
     if not samples:
-        print("[오류] 학습 데이터가 없습니다.")
+        print("[오류] 학습 데이터가 없습니다. --db 또는 --extra-data 를 지정하세요.")
         sys.exit(1)
 
     dataset = CorrectionDataset(samples, character)
@@ -394,8 +397,8 @@ def _save_model(model: nn.Module, device: torch.device):
 # ── CLI ──────────────────────────────────────────────────────────
 def main():
     p = argparse.ArgumentParser(description="EasyOCR 한국어 파인튜닝")
-    p.add_argument("--db",         required=True,
-                   help="프로젝트 DB 경로 (.db) — OCR 교정 데이터 출처")
+    p.add_argument("--db",         default=None,
+                   help="프로젝트 DB 경로 (.db) — OCR 교정 데이터 출처 (선택)")
     p.add_argument("--extra-data", default=None,
                    help="AI-Hub 데이터 루트 디렉토리 (선택)")
     p.add_argument("--max-extra",  type=int, default=50000,
@@ -405,7 +408,11 @@ def main():
     p.add_argument("--lr",         type=float, default=1e-4)
     args = p.parse_args()
 
-    if not os.path.isfile(args.db):
+    if not args.db and not args.extra_data:
+        print("[오류] --db 또는 --extra-data 중 하나는 반드시 지정해야 합니다.")
+        sys.exit(1)
+
+    if args.db and not os.path.isfile(args.db):
         print(f"[오류] DB 파일 없음: {args.db}")
         sys.exit(1)
 
