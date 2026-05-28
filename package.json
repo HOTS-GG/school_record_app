@@ -26,6 +26,7 @@
     "test:ts": "vitest run"
   },
   "dependencies": {
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2",
