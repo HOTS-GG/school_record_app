@@ -1,10 +1,9 @@
-﻿<script setup>
+<script setup>
 import {onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {invoke} from '@tauri-apps/api/core'
 import {open, save} from '@tauri-apps/plugin-dialog'
 import {getVersion} from '@tauri-apps/api/app'
-import {openUrl} from '@tauri-apps/plugin-opener'
 import {useProjectStore} from '../stores/project'
 import {useConfigStore} from '../stores/configStore'
 import PasswordModal from '../components/PasswordModal.vue'
@@ -17,10 +16,7 @@ const config = useConfigStore()
 const error = ref('')
 
 const currentVersion = ref('')
-const showUpdateModal = ref(false)
-const updateStatus = ref('idle') // 'idle' | 'checking' | 'latest' | 'found' | 'error'
-const latestVersion = ref('')
-const releaseUrl = ref('')
+const showLicenseModal = ref(false)
 
 const showPasswordModal = ref(false)
 const passwordError = ref('')
@@ -106,27 +102,6 @@ function handlePasswordCancel() {
   showPasswordModal.value = false
   project.closeProject()
 }
-
-async function checkUpdate() {
-  showUpdateModal.value = true
-  updateStatus.value = 'checking'
-  try {
-    const res = await fetch('https://api.github.com/repos/itmir913/School-Record-App/releases/latest')
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data = await res.json()
-    latestVersion.value = data.tag_name
-    releaseUrl.value = data.html_url
-    const tag = data.tag_name.replace(/^v/, '')
-    updateStatus.value = tag !== currentVersion.value?.replace(/^v/, '') ? 'found' : 'latest'
-  } catch {
-    updateStatus.value = 'error'
-  }
-}
-
-function closeUpdateModal() {
-  showUpdateModal.value = false
-  updateStatus.value = 'idle'
-}
 </script>
 
 <template>
@@ -187,28 +162,6 @@ function closeUpdateModal() {
               <path d="M9 5l7 7-7 7"/>
             </svg>
           </button>
-
-          <div class="action-row">
-            <button class="btn-update" @click="checkUpdate">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="1 4 1 10 7 10"/>
-                <polyline points="23 20 23 14 17 14"/>
-                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
-              </svg>
-              업데이트 확인
-            </button>
-
-            <button class="btn-update" @click="openUrl('https://luminousky.com/teacher-utility-kit/neis-editor/')">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                <polyline points="15 3 21 3 21 9"></polyline>
-                <line x1="10" y1="14" x2="21" y2="3"></line>
-              </svg>
-              프로그램 소개
-            </button>
-          </div>
         </div>
 
         <!-- 에러 -->
@@ -226,9 +179,7 @@ function closeUpdateModal() {
 
         <p class="version">
           v{{ currentVersion }} |
-          <a href="https://github.com/itmir913/School-Record-App/#%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4" target="_blank">
-            <u>Educational Use Only</u>
-          </a>
+          <button class="license-btn" @click="showLicenseModal = true">Educational Use Only</button>
         </p>
       </div>
     </div>
@@ -250,77 +201,64 @@ function closeUpdateModal() {
         @close="handleReleaseNotesClose"
     />
 
-    <!-- 업데이트 모달 -->
+    <!-- 라이선스 모달 -->
     <transition name="modal">
-      <div v-if="showUpdateModal" class="overlay">
+      <div v-if="showLicenseModal" class="overlay" @click.self="showLicenseModal = false">
         <div class="modal">
           <div class="modal-header">
             <div>
-              <h2>업데이트 확인</h2>
-              <p>현재 버전 v{{ currentVersion }}</p>
+              <h2>라이선스</h2>
+              <p>Educational Use Only</p>
             </div>
-            <button class="close-btn" @click="closeUpdateModal">
+            <button class="close-btn" @click="showLicenseModal = false">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
-          <div class="update-body">
-
-            <!-- 확인 중 -->
-            <div v-if="updateStatus === 'checking'" class="update-checking">
-              <div class="spinner"/>
-              <p>최신 버전을 확인하는 중…</p>
+          <div class="license-body">
+            <div class="license-credit">
+              <p>본 프로그램은 <strong>itmir913</strong>님이 제작한 오픈소스 프로젝트를 기반으로,<br>AI 기능을 추가하여 수정한 버전입니다.</p>
+              <p class="credit-link">원본 프로젝트: github.com/itmir913/School-Record-App</p>
             </div>
 
-            <!-- 최신 버전 -->
-            <div v-else-if="updateStatus === 'latest'" class="update-state update-latest">
-              <svg width="25" height="25" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 6L9 17l-5-5"/>
-              </svg>
-              <div>
-                <p class="state-title">최신 버전입니다</p>
-                <p class="state-desc">현재 사용 중인 버전이 최신입니다.</p>
-              </div>
-            </div>
+            <h3>라이선스</h3>
+            <p>본 프로젝트는 <strong>PolyForm Noncommercial License 1.0.0</strong>을 따릅니다.<br>교육 및 비상업적 목적에 한해 자유롭게 사용 가능하며, 상업적 이용은 엄격히 금지됩니다.</p>
 
-            <!-- 새 버전 있음 -->
-            <div v-else-if="updateStatus === 'found'" class="update-state update-found">
-              <svg width="25" height="25" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path
-                    d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-              </svg>
-              <div>
-                <p class="state-title">새 버전이 있습니다 — {{ latestVersion }}</p>
-                <p class="state-desc">GitHub에서 최신 버전을 다운로드할 수 있습니다.</p>
-              </div>
-            </div>
+            <h3>허용되는 사용</h3>
+            <ul>
+              <li>공교육 교사 개인</li>
+              <li>학교 (사립학교 포함)</li>
+              <li>교육청 및 공공 교육기관</li>
+              <li>교사가 제작하는 무료 소개·활용 강의 또는 영상 콘텐츠</li>
+              <li>공공·비영리 교육기관이 주관하는 교사 대상 연수 및 컨설팅</li>
+            </ul>
 
-            <!-- 오류 -->
-            <div v-else-if="updateStatus === 'error'" class="update-state update-error">
-              <svg width="25" height="25" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 8v4m0 4h.01"/>
-              </svg>
-              <div>
-                <p class="state-title">확인에 실패했습니다</p>
-                <p class="state-desc">인터넷 연결을 확인한 후 다시 시도해 주세요.</p>
-              </div>
-            </div>
+            <h3>허용되지 않는 사용</h3>
+            <ul>
+              <li>소프트웨어 또는 수정본의 판매</li>
+              <li>유료 서비스 (SaaS, 구독형 등)로 제공</li>
+              <li>상업 계약의 일부로 사용</li>
+              <li>기업 또는 영리 조직의 업무 운영 목적 사용</li>
+              <li>민간 사업자의 유상 컨설팅·연수 일부로 사용</li>
+              <li>유료 구독·멤버십 형태의 관련 강의·시연 제공</li>
+              <li>영리 목적의 사교육 기관 (학원, 입시 컨설팅 등)의 사업 운영 목적 사용</li>
+            </ul>
 
-            <!-- 다운로드 버튼 (새 버전일 때만) -->
-            <button v-if="updateStatus === 'found'" class="btn-download" @click="openUrl(releaseUrl)">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-              GitHub에서 다운로드
-            </button>
+            <h3>PolyForm Noncommercial 1.0.0 주요 조항</h3>
+            <ul>
+              <li>비상업적 목적의 사용, 수정, 배포 허용</li>
+              <li>소프트웨어 배포 시 라이선스 전문을 함께 제공해야 함</li>
+              <li>라이선스를 타인에게 양도하거나 재허가 불가</li>
+              <li>소프트웨어는 "있는 그대로" 제공되며, 어떠한 보증도 없음</li>
+              <li>라이선스 위반 시 통지 후 32일 내 미시정 시 라이선스 즉시 종료</li>
+            </ul>
 
+            <h3>위반 제보 및 문의</h3>
+            <p>라이선스 위반 사례는 원저작자에게 제보 가능하며, 법률 대응 조치가 취해질 수 있습니다.</p>
+            <p>원저작자: itmir913@gmail.com</p>
+            <p>수정 버전 문의: gauststear@gmail.com</p>
           </div>
         </div>
       </div>
@@ -495,35 +433,6 @@ function closeUpdateModal() {
   transform: translateX(2px);
 }
 
-.action-row {
-  display: flex;
-  gap: 12px;
-  width: 100%;
-}
-
-.btn-update {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex: 1;
-  padding: 10px;
-  background: none;
-  border: 1px solid var(--bd-2);
-  border-radius: 10px;
-  font-size: 15px;
-  color: var(--clr-text-hint);
-  cursor: pointer;
-  margin-top: 2px;
-  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
-}
-
-.btn-update:hover {
-  color: var(--tx-3);
-  border-color: var(--bd-2);
-  background-color: var(--bg-1);
-}
-
 /* ── 에러 ── */
 .error-box {
   display: flex;
@@ -554,6 +463,21 @@ function closeUpdateModal() {
   text-align: center;
   font-size: 13px;
   color: var(--clr-text-hint);
+}
+
+.license-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.license-btn:hover {
+  color: var(--tx-3);
 }
 
 /* ── 모달 오버레이 ── */
@@ -614,106 +538,59 @@ function closeUpdateModal() {
   color: var(--tx-3);
 }
 
-/* ── 업데이트 모달 바디 ── */
-.update-body {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.update-checking {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  padding: 30px 0;
-  color: var(--clr-text-hint);
-  font-size: 16px;
-}
-
-.spinner {
-  width: 30px;
-  height: 30px;
-  border: 2px solid var(--bd-1);
-  border-top-color: var(--accent-hex-hover);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.update-state {
-  display: flex;
-  align-items: flex-start;
-  gap: 15px;
-  padding: 18px 20px;
-  border-radius: 14px;
-  border: 1px solid;
-}
-
-.update-latest {
-  background-color: var(--clr-badge-green-bg);
-  border-color: var(--clr-badge-green-bd);
-  color: var(--clr-green-bright);
-}
-
-.update-found {
-  background-color: var(--clr-badge-warn-bg);
-  border-color: var(--clr-badge-warn-bd);
-  color: var(--clr-warn-text);
-}
-
-.update-error {
-  background-color: var(--clr-badge-red-bg);
-  border-color: var(--clr-badge-red-bd);
-  color: var(--clr-red-text-light);
-}
-
-.update-state svg {
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.state-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 5px;
-}
-
-.state-desc {
+/* ── 라이선스 모달 바디 ── */
+.license-body {
   font-size: 14px;
-  opacity: 0.75;
+  color: var(--tx-3);
+  line-height: 1.7;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.license-credit {
+  padding: 14px 16px;
+  background-color: var(--bg-1);
+  border: 1px solid var(--bd-1);
+  border-radius: 10px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.license-credit p {
+  margin: 0 0 4px;
+}
+
+.license-credit p:last-child {
   margin: 0;
-  line-height: 1.5;
 }
 
-.btn-download {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 14px 20px;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  background-color: var(--accent-hex);
-  color: #ffffff;
-  transition: background-color 0.15s, transform 0.1s;
+.credit-link {
+  font-size: 12px;
+  color: var(--clr-text-hint);
+  font-family: monospace;
 }
 
-.btn-download:hover {
-  background-color: var(--accent-hex-hover);
+.license-body h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx-1);
+  margin: 18px 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.btn-download:active {
-  transform: scale(0.98);
+.license-body p {
+  margin: 0 0 4px;
+}
+
+.license-body ul {
+  margin: 0 0 4px;
+  padding-left: 18px;
+}
+
+.license-body ul li {
+  margin-bottom: 3px;
 }
 
 .modal-enter-from, .modal-leave-to {

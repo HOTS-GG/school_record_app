@@ -12,7 +12,7 @@ import {
   Check,
   X,
 } from 'lucide-vue-next'
-import { useAiStore, AI_MODELS, DEFAULT_MODEL } from '../stores/ai'
+import { useAiStore, DEFAULT_MODEL, groupModelsByProvider } from '../stores/ai'
 import { useChatStore } from '../stores/chat'
 
 const aiStore = useAiStore()
@@ -24,6 +24,7 @@ const loading = ref(false)
 const errorMsg = ref('')
 const messagesEl = ref(null)
 const showModelDropdown = ref(false)
+const chatModels = ref([])
 
 // 세션 이름 편집
 const editingSessionId = ref(null)
@@ -31,17 +32,20 @@ const editingTitle = ref('')
 
 // ── 파생값 ──────────────────────────────────────────────────
 const activeSession = computed(() => chatStore.getActiveSession())
+const chatModelGroups = computed(() => groupModelsByProvider(chatModels.value))
+
 
 const currentModelLabel = computed(() => {
   const m = activeSession.value?.model || DEFAULT_MODEL
-  const found = AI_MODELS.find((x) => x.value === m)
-  return found ? found.label : m
+  const found = chatModels.value.find((x) => x.id === m)
+  return found ? found.name : m.split('/').pop()
 })
 
 // ── 초기화 ──────────────────────────────────────────────────
 onMounted(async () => {
+  const models = await aiStore.getSyncedModels()
+  chatModels.value = models || []
   await chatStore.loadSessions()
-  // 가장 최근 세션 자동 선택
   if (chatStore.sessions.length > 0) {
     await chatStore.selectSession(chatStore.sessions[0].id)
   }
@@ -192,7 +196,7 @@ watch(
           <!-- 일반 모드 -->
           <div v-else class="session-info">
             <span class="session-title">{{ sessionPreview(session) }}</span>
-            <span class="session-model">{{ AI_MODELS.find(m => m.value === session.model)?.label?.split(' ')[0] || session.model }}</span>
+            <span class="session-model">{{ (chatModels.find(m => m.id === session.model)?.name || session.model).split('/').pop() }}</span>
           </div>
 
           <!-- 액션 버튼 (편집 모드 아닐 때만) -->
@@ -242,14 +246,20 @@ watch(
             <ChevronDown :size="14" class="model-selector-chevron" :style="{ transform: showModelDropdown ? 'rotate(180deg)' : '' }"/>
           </button>
           <div v-if="showModelDropdown" class="model-dropdown">
-            <button
-                v-for="m in AI_MODELS"
-                :key="m.value"
-                :class="['model-option', activeSession?.model === m.value ? 'model-option--active' : '']"
-                @click="selectModel(m.value)"
-            >
-              {{ m.label }}
-            </button>
+            <div v-if="!chatModels.length" class="model-no-sync">
+              설정에서 모델 동기화를 먼저 해주세요
+            </div>
+            <template v-for="(models, label) in chatModelGroups" :key="label">
+              <div class="model-group-header">{{ label }}</div>
+              <button
+                  v-for="m in models"
+                  :key="m.id"
+                  :class="['model-option', activeSession?.model === m.id ? 'model-option--active' : '']"
+                  @click="selectModel(m.id)"
+              >
+                {{ m.name }}
+              </button>
+            </template>
           </div>
         </div>
       </div>
@@ -577,10 +587,33 @@ watch(
   background-color: var(--bg-2);
   border: 1px solid var(--bg-hover);
   border-radius: 10px;
-  min-width: 220px;
+  min-width: 240px;
+  max-height: 380px;
+  overflow-y: auto;
   z-index: 100;
-  overflow: hidden;
   box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+
+
+.model-group-header {
+  padding: 8px 14px 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tx-5);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-2);
+  border-top: 1px solid var(--bd-2);
+}
+.model-group-header:first-child { border-top: none; }
+
+.model-no-sync {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--tx-4);
+  text-align: center;
 }
 
 .model-option {

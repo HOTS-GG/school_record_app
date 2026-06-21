@@ -290,9 +290,17 @@ pub async fn ai_chat(
 
     let mut api_messages: Vec<serde_json::Value> = Vec::new();
 
-    if let Some(sp) = system_prompt.as_deref().filter(|s| !s.trim().is_empty()) {
-        api_messages.push(serde_json::json!({ "role": "system", "content": sp }));
-    }
+    // 학교 정책 제한 — 이미지·영상 생성 요청 거부
+    const SCHOOL_POLICY: &str =
+        "이미지, 영상, 그림 생성을 요청받으면 반드시 \
+        \"학교 정책 상 이미지·영상 생성 기능은 지원되지 않습니다. \
+        텍스트 기반 도움이 필요하시면 말씀해주세요.\"라고만 안내하세요.";
+
+    let system_content = match system_prompt.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(sp) => format!("{}\n\n{}", sp, SCHOOL_POLICY),
+        None     => SCHOOL_POLICY.to_string(),
+    };
+    api_messages.push(serde_json::json!({ "role": "system", "content": system_content }));
 
     for m in &messages {
         api_messages.push(serde_json::json!({ "role": m.role, "content": m.content }));

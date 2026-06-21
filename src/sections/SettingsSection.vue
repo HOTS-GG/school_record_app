@@ -1,7 +1,7 @@
 ﻿<script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Eye, EyeOff, Pencil, Trash2, Plus, Check, X, RotateCcw, Sun, Moon, Pipette, RefreshCw } from 'lucide-vue-next'
-import { useAiStore, DEFAULT_SYSTEM_PROMPT, DEFAULT_MODEL, AI_MODELS, AI_MODEL_GROUPS } from '../stores/ai'
+import { useAiStore, DEFAULT_SYSTEM_PROMPT, DEFAULT_MODEL, groupModelsByProvider } from '../stores/ai'
 import { useThemeStore, DEFAULT_ACCENT, computeAccentVars, hexToRgb } from '../stores/theme'
 
 const aiStore    = useAiStore()
@@ -27,8 +27,8 @@ const modelSuccess   = ref('')
 const syncingModels  = ref(false)
 const syncedAt       = ref('')
 const syncedCount    = ref(0)
-const syncedModels   = ref(null) // null = 미동기화 | [{id,name}]
-const syncedOk       = ref(false) // 이번 세션에서 동기화 성공 여부
+const syncedModels   = ref([]) // [] = 미동기화 or 빈 목록 | [{id,name}]
+const syncedOk       = ref(false)
 
 // ── 역할 프롬프트 ──────────────────────────────────────
 const systemPrompt  = ref(DEFAULT_SYSTEM_PROMPT)
@@ -129,11 +129,14 @@ async function loadModel() {
 
 async function loadSyncedModels() {
   const models = await aiStore.getSyncedModels()
-  syncedModels.value = models
-  if (models) syncedCount.value = models.length
+  syncedModels.value = models || []
+  syncedCount.value = syncedModels.value.length
   const at = await aiStore.getSyncedModelsAt()
   syncedAt.value = at || ''
 }
+
+const syncedModelGroups = computed(() => groupModelsByProvider(syncedModels.value))
+
 
 async function saveModel() {
   modelSaving.value = true
@@ -157,17 +160,6 @@ async function syncModels() {
   }
 }
 
-// 동기화된 모델을 공급사별로 그룹화
-const syncedModelGroups = computed(() => {
-  if (!syncedModels.value) return null
-  const groups = {}
-  for (const m of syncedModels.value) {
-    const provider = m.id.includes('/') ? m.id.split('/')[0] : '기타'
-    if (!groups[provider]) groups[provider] = []
-    groups[provider].push(m)
-  }
-  return groups
-})
 
 // ── 역할 프롬프트 함수 ────────────────────────────────
 async function loadPrompt() {
@@ -235,7 +227,7 @@ function flash(target, msg) {
         <div class="card-header">
           <div class="card-title-group">
             <span class="card-title">OpenRouter API 키</span>
-            <span class="card-desc">키는 프로젝트 DB에 저장됩니다.</span>
+            <span class="card-desc">키는 앱 전역 DB에 저장됩니다. 프로젝트와 무관하게 유지됩니다.</span>
           </div>
         </div>
 
@@ -330,15 +322,13 @@ function flash(target, msg) {
           </button>
         </div>
 
-        <!-- 정적 목록 (optgroup) + 동기화된 신규 모델이 있으면 추가 그룹으로 표시 -->
-        <select v-model="selectedModel" class="model-select">
-          <optgroup v-for="g in AI_MODEL_GROUPS" :key="g.label" :label="g.label">
-            <option v-for="m in g.models" :key="m.value" :value="m.value">{{ m.label }}</option>
-          </optgroup>
-          <optgroup v-if="syncedModelGroups && Object.keys(syncedModelGroups).length" label="── 신규 (동기화됨) ──">
-            <template v-for="(models, provider) in syncedModelGroups" :key="provider">
-              <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}</option>
-            </template>
+        <!-- 동기화된 전체 대화형 모델 목록 (제공사별 그룹) -->
+        <select v-model="selectedModel" class="model-select" :disabled="!syncedModels.length">
+          <option v-if="!syncedModels.length" value="" disabled>
+            ↑ 먼저 모델 동기화를 눌러주세요
+          </option>
+          <optgroup v-for="(models, label) in syncedModelGroups" :key="label" :label="label">
+            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}</option>
           </optgroup>
         </select>
 

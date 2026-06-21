@@ -1,4 +1,4 @@
-use crate::state::DbState;
+use crate::state::{DbState, GlobalConfigState};
 use rusqlite::Connection;
 use tauri::State;
 
@@ -82,6 +82,49 @@ pub async fn delete_config(
 ) -> Result<(), String> {
     let guard = db.0.lock().map_err(|e| e.to_string())?;
     let conn = guard.as_ref().ok_or("DB not open")?;
+    conn.execute(
+        "DELETE FROM APP_CONFIGS WHERE config_key = ?1",
+        [&key],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── 전역 설정 (config.db, 프로젝트 무관) ─────────────────────────
+
+#[tauri::command]
+pub fn get_global_config(
+    global: State<'_, GlobalConfigState>,
+    key: String,
+) -> Result<Option<String>, String> {
+    let conn = global.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT config_value FROM APP_CONFIGS WHERE config_key = ?1")
+        .map_err(|e| e.to_string())?;
+    Ok(stmt.query_row([&key], |row| row.get::<_, String>(0)).ok())
+}
+
+#[tauri::command]
+pub fn set_global_config(
+    global: State<'_, GlobalConfigState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = global.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR REPLACE INTO APP_CONFIGS (config_key, config_value) VALUES (?1, ?2)",
+        [&key, &value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_global_config(
+    global: State<'_, GlobalConfigState>,
+    key: String,
+) -> Result<(), String> {
+    let conn = global.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM APP_CONFIGS WHERE config_key = ?1",
         [&key],

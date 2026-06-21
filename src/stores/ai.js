@@ -3,6 +3,53 @@ import { invoke } from '@tauri-apps/api/core'
 
 export const DEFAULT_MODEL = 'anthropic/claude-haiku-4-5'
 
+// 제공사 prefix → 표시 이름
+const PROVIDER_LABELS = {
+  'openai':      'OpenAI',
+  'anthropic':   'Anthropic',
+  'google':      'Google',
+  'x-ai':        'xAI (Grok)',
+  'meta-llama':  'Meta (Llama)',
+  'mistralai':   'Mistral',
+  'deepseek':    'DeepSeek',
+  'cohere':      'Cohere',
+  'qwen':        'Qwen (Alibaba)',
+  'microsoft':   'Microsoft',
+  'amazon':      'Amazon',
+  'nvidia':      'NVIDIA',
+  'perplexity':  'Perplexity',
+  '01-ai':       '01.AI',
+}
+
+// 주요 제공사 표시 순서
+const PROVIDER_ORDER = [
+  'openai', 'anthropic', 'google', 'x-ai',
+  'meta-llama', 'mistralai', 'deepseek', 'cohere',
+  'qwen', 'microsoft', 'amazon', 'nvidia', 'perplexity',
+]
+
+export function groupModelsByProvider(models) {
+  const raw = {}
+  for (const m of models) {
+    const prefix = m.id.includes('/') ? m.id.split('/')[0] : '기타'
+    if (!raw[prefix]) raw[prefix] = []
+    raw[prefix].push(m)
+  }
+  const result = {}
+  // 알려진 제공사 우선
+  for (const prefix of PROVIDER_ORDER) {
+    if (raw[prefix]) {
+      result[PROVIDER_LABELS[prefix] || prefix] = raw[prefix]
+      delete raw[prefix]
+    }
+  }
+  // 나머지 알파벳 순
+  for (const prefix of Object.keys(raw).sort()) {
+    result[PROVIDER_LABELS[prefix] || prefix] = raw[prefix]
+  }
+  return result
+}
+
 export const DEFAULT_SYSTEM_PROMPT = `당신은 대한민국 고등학교 담당 교사입니다. 교사의 관찰 시점에서 학생의 생활기록부 세부능력특기사항을 작성합니다.
 
 작성 규칙:
@@ -44,35 +91,35 @@ export const AI_MODEL_GROUPS = ['GPT', 'Gemini', 'Claude', 'Grok'].map(group => 
 
 export const useAiStore = defineStore('ai', () => {
   async function getApiKey() {
-    return await invoke('get_config', { key: 'claude_api_key' })
+    return await invoke('get_global_config', { key: 'claude_api_key' })
   }
 
   async function setApiKey(value) {
-    await invoke('set_config', { key: 'claude_api_key', value })
+    await invoke('set_global_config', { key: 'claude_api_key', value })
   }
 
   async function deleteApiKey() {
-    await invoke('delete_config', { key: 'claude_api_key' })
+    await invoke('delete_global_config', { key: 'claude_api_key' })
   }
 
   async function getModel() {
-    return await invoke('get_config', { key: 'ai_model' })
+    return await invoke('get_global_config', { key: 'ai_model' })
   }
 
   async function setModel(value) {
-    await invoke('set_config', { key: 'ai_model', value })
+    await invoke('set_global_config', { key: 'ai_model', value })
   }
 
   async function getSystemPrompt() {
-    return await invoke('get_config', { key: 'ai_system_prompt' })
+    return await invoke('get_global_config', { key: 'ai_system_prompt' })
   }
 
   async function setSystemPrompt(value) {
-    await invoke('set_config', { key: 'ai_system_prompt', value })
+    await invoke('set_global_config', { key: 'ai_system_prompt', value })
   }
 
   async function deleteSystemPrompt() {
-    await invoke('delete_config', { key: 'ai_system_prompt' })
+    await invoke('delete_global_config', { key: 'ai_system_prompt' })
   }
 
   // 참고 자료 설정 (JSON 직렬화하여 저장)
@@ -116,13 +163,13 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   async function getSyncedModels() {
-    const json = await invoke('get_config', { key: 'synced_models' })
+    const json = await invoke('get_global_config', { key: 'synced_models' })
     if (!json) return null
     try { return JSON.parse(json) } catch { return null }
   }
 
   async function getSyncedModelsAt() {
-    return await invoke('get_config', { key: 'synced_models_at' })
+    return await invoke('get_global_config', { key: 'synced_models_at' })
   }
 
   return {

@@ -202,39 +202,24 @@ pub async fn ai_generate_record(
 
 // ── 모델 동기화 필터 상수 ─────────────────────────────────────
 
-/// 허용할 제공사 접두사 (GPT, Gemini, Claude, Grok만)
-const ALLOWED_PREFIXES: &[&str] = &[
-    "openai/gpt",
-    "google/gemini",
-    "anthropic/claude",
-    "x-ai/grok",
-];
-
-/// 제외할 키워드 (이미지·동영상·preview·임베딩 등)
+/// 이미지·영상·음성 생성/처리 전용 모델 제외 키워드
 const EXCLUDED_KEYWORDS: &[&str] = &[
-    "preview", "dall-e", "tts", "whisper", "embed", "moderation",
-    "realtime", "image-alpha", "image-beta", "vision-only",
-    "imagen", "stable-diffusion", "audio",
+    // 이미지 생성
+    "dall-e", "stable-diffusion", "imagen", "image-alpha", "image-beta",
+    "sdxl", "flux",
+    // 영상 생성
+    "video", "sora",
+    // 음성·오디오
+    "tts", "whisper", "audio",
+    // 임베딩
+    "embed",
+    // 모더레이션
+    "moderation",
+    // 기타 비대화
+    "realtime", "vision-only",
 ];
 
-/// 앱에 이미 내장된 정적 모델 ID (동기화 시 제외)
-const STATIC_MODEL_IDS: &[&str] = &[
-    "openai/gpt-5",
-    "openai/gpt-4.1",
-    "openai/gpt-4o",
-    "google/gemini-2.5-pro",
-    "google/gemini-2.5-flash",
-    "google/gemini-2.0-flash-001",
-    "anthropic/claude-opus-4",
-    "anthropic/claude-sonnet-4-5",
-    "anthropic/claude-haiku-4-5",
-    "x-ai/grok-4",
-    "x-ai/grok-3",
-    "x-ai/grok-3-mini",
-];
-
-/// OpenRouter 모델 동기화 —
-/// GPT/Gemini/Claude/Grok 중 정적 목록에 없는 신규 모델만 저장
+/// OpenRouter 전체 대화형 모델 동기화 (모든 제공사, 이미지·영상·음성 모델 제외)
 #[tauri::command]
 pub async fn sync_openrouter_models(
     global: State<'_, GlobalConfigState>,
@@ -275,16 +260,22 @@ pub async fn sync_openrouter_models(
             let id_lower = id.to_lowercase();
             let name = m["name"].as_str().unwrap_or(id);
 
-            // 허용 제공사만
-            if !ALLOWED_PREFIXES.iter().any(|p| id_lower.starts_with(p)) {
+            // architecture.modality 필드로 출력 타입 확인 (text 출력만 허용)
+            if let Some(modality) = m["architecture"]["modality"].as_str() {
+                let output = modality.split("->").last().unwrap_or("").to_lowercase();
+                if output.contains("image") || output.contains("video") || output.contains("audio") {
+                    return None;
+                }
+            }
+
+            // 제공사 prefix가 영문자·숫자·하이픈·점만 허용 (~ 등 특수문자 제외)
+            let provider = id_lower.split('/').next().unwrap_or("");
+            if !provider.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.') {
                 return None;
             }
-            // 제외 키워드 포함 시 스킵
+
+            // 키워드 기반 추가 필터
             if EXCLUDED_KEYWORDS.iter().any(|k| id_lower.contains(k)) {
-                return None;
-            }
-            // 이미 내장된 정적 모델이면 스킵
-            if STATIC_MODEL_IDS.contains(&id) {
                 return None;
             }
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { ref } from 'vue'
-import { useAiStore } from './ai'
+import { useAiStore, DEFAULT_MODEL } from './ai'
 
 export const useChatStore = defineStore('chat', () => {
   const aiStore = useAiStore()
@@ -20,7 +20,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function createSession(model) {
-    const resolvedModel = model || (await aiStore.getModel())
+    const resolvedModel = model || (await aiStore.getModel()) || DEFAULT_MODEL
     const session = await invoke('create_chat_session', {
       title: '새 대화',
       model: resolvedModel,

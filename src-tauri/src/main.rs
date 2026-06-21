@@ -109,6 +109,9 @@ fn main() {
             get_config,
             set_config,
             delete_config,
+            get_global_config,
+            set_global_config,
+            delete_global_config,
             check_and_update_app_version,
             // 암호화
             get_encryption_status,
