@@ -40,7 +40,6 @@ fn main() {
                 entries: HashMap::new(),
             }));
             app.manage(CryptoStateHandle::new(CryptoState { key: None }));
-            app.manage(OcrState(Mutex::new(None)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -131,11 +130,6 @@ fn main() {
             save_chat_message,
             update_chat_session,
             delete_chat_session,
-            // OCR
-            ocr_image,
-            save_ocr_correction,
-            get_ocr_history,
-            export_ocr_dataset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
