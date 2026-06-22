@@ -29,7 +29,9 @@ const slots = useSlots()
             </button>
           </div>
 
-          <slot />
+          <div class="modal-scroll">
+            <slot />
+          </div>
 
           <div v-if="slots.footer" class="modal-ftr">
             <slot name="footer" />
@@ -41,6 +43,12 @@ const slots = useSlots()
 </template>
 
 <style scoped>
+.modal-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .base-header-text {
   display: flex;
   flex-direction: column;

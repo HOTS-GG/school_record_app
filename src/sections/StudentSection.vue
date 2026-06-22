@@ -193,6 +193,10 @@ async function handleDeleted() {
 </template>
 
 <style scoped>
+.activity-section-wrapper {
+  height: 100%;
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -314,6 +318,7 @@ async function handleDeleted() {
   border: 1px solid var(--bd-1);
   border-radius: 16px;
   overflow: hidden;
+  background-color: var(--bg-1);
 }
 
 .student-table {
@@ -327,7 +332,7 @@ async function handleDeleted() {
   color: var(--clr-text-subtle);
   text-align: left;
   padding: 12px 16px;
-  background-color: var(--bg-0);
+  background-color: var(--bg-1);
   border-bottom: 1px solid var(--bd-1);
   letter-spacing: 0.04em;
   text-transform: uppercase;

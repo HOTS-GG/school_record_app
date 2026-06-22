@@ -18,6 +18,7 @@ import ReplaceSection from '../sections/ReplaceSection.vue'
 import InspectSection from '../sections/InspectSection.vue'
 import ChatSection from '../sections/ChatSection.vue'
 import SettingsSection from '../sections/SettingsSection.vue'
+import ManualSection from '../sections/ManualSection.vue'
 import SnapshotModal from '../components/SnapshotModal.vue'
 
 const project = useProjectStore()
@@ -41,6 +42,7 @@ const sectionMap = {
   inspect: InspectSection,
   chat: ChatSection,
   settings: SettingsSection,
+  manual: ManualSection,
 }
 
 const currentSection = computed(() => sectionMap[activeSection.value])
@@ -88,7 +90,7 @@ onMounted(async () => {
 
 .workspace-main {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   background-color: var(--bg-0);
 }
 </style>

@@ -749,7 +749,7 @@ onMounted(() => {
 }
 
 .group-card {
-  background: var(--bg-0);
+  background: var(--bg-1);
   border: 1px solid var(--bd-1);
   border-radius: 10px;
   padding: 16px 20px;
@@ -851,18 +851,19 @@ onMounted(() => {
 
 .input-sm {
   flex: 1;
-  background: var(--bd-1);
-  border: 1px solid var(--bd-1);
+  background: var(--bg-1);
+  border: 1px solid var(--accent-hex);
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 13px;
   color: var(--tx-1);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .input-sm:focus {
   border-color: var(--accent-hex);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
 }
 
 .btn-sm {

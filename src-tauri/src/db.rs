@@ -6,7 +6,7 @@ use std::path::Path;
 /// 스키마 변경 시 이 값을 올리고 MIGRATIONS 배열에 SQL을 추가한다.
 /// 중요: 스키마 버전을 올릴 때는 반드시 Cargo.toml의 version(app_version)도 함께 올려야 한다.
 /// app_version이 바뀌지 않으면 릴리즈 노트 모달이 표시되지 않는다.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// 인덱스 i: 버전 i → i+1 로 올리는 SQL.
 /// [0] v0→v1: 버전 도입 이전 DB를 v1으로 승격. 스키마는 IF NOT EXISTS로 생성되어 있으므로 SQL 없음.
@@ -60,6 +60,8 @@ const MIGRATIONS: &[&str] = &[
          corrected_at    TEXT
      );
      CREATE INDEX IF NOT EXISTS idx_ocr_result_session ON OcrResult (session_id);",
+    // v6 → v7: AreaActivity에 sort_order 컬럼 추가 (활동 순서 저장)
+    "ALTER TABLE AreaActivity ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;",
 ];
 
 // ── 내부 헬퍼 ────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 ﻿<script setup>
 import {computed, ref, watch} from 'vue'
-import {AlertTriangle, Trash2} from 'lucide-vue-next'
+import {AlertTriangle, Menu, Trash2, X} from 'lucide-vue-next'
 import BaseModal from './BaseModal.vue'
 
 const props = defineProps({
@@ -18,9 +18,46 @@ const prompt = ref('')
 const role = ref('common')
 const error = ref('')
 const confirmDelete = ref(false)
-const selectedIds = ref(new Set())
-const sortedActivities = computed(() =>
-    [...props.allActivities].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+
+// 선택된 활동을 순서 있는 배열로 관리
+const orderedSelectedIds = ref([])
+
+// 드래그 상태
+let dragFromIdx = null
+
+function onDragStart(idx) {
+  dragFromIdx = idx
+}
+
+function onDragOver(e, idx) {
+  e.preventDefault()
+  if (dragFromIdx === null || dragFromIdx === idx) return
+  const arr = [...orderedSelectedIds.value]
+  const [moved] = arr.splice(dragFromIdx, 1)
+  arr.splice(idx, 0, moved)
+  orderedSelectedIds.value = arr
+  dragFromIdx = idx
+}
+
+function onDragEnd() {
+  dragFromIdx = null
+}
+
+// 선택 여부
+const selectedIdSet = computed(() => new Set(orderedSelectedIds.value))
+
+// 미선택 활동 (정렬)
+const unselectedActivities = computed(() =>
+    [...props.allActivities]
+        .filter(a => !selectedIdSet.value.has(a.id))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+)
+
+// 선택된 활동 상세 (순서 유지)
+const orderedSelectedActivities = computed(() =>
+    orderedSelectedIds.value
+        .map(id => props.allActivities.find(a => a.id === id))
+        .filter(Boolean)
 )
 
 watch(
@@ -31,13 +68,13 @@ watch(
         byteLimit.value = a.byte_limit
         prompt.value = a.prompt ?? ''
         role.value = a.role ?? 'common'
-        selectedIds.value = new Set(a.activities.map(x => x.id))
+        orderedSelectedIds.value = a.activities.map(x => x.id)
       } else {
         name.value = ''
         byteLimit.value = 1500
         prompt.value = ''
         role.value = 'common'
-        selectedIds.value = new Set()
+        orderedSelectedIds.value = []
       }
       error.value = ''
       confirmDelete.value = false
@@ -57,11 +94,14 @@ function validate() {
   return true
 }
 
-function toggleActivity(id) {
-  const next = new Set(selectedIds.value)
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  selectedIds.value = next
+function addActivity(id) {
+  if (!selectedIdSet.value.has(id)) {
+    orderedSelectedIds.value = [...orderedSelectedIds.value, id]
+  }
+}
+
+function removeActivity(id) {
+  orderedSelectedIds.value = orderedSelectedIds.value.filter(x => x !== id)
 }
 
 function submit() {
@@ -72,7 +112,7 @@ function submit() {
     byteLimit: Number(byteLimit.value),
     prompt: prompt.value.trim() || null,
     role: role.value,
-    activityIds: [...selectedIds.value],
+    activityIds: [...orderedSelectedIds.value],
   })
 }
 
@@ -168,29 +208,61 @@ function handleDelete() {
       <!-- 구분선 -->
       <div class="pane-divider"/>
 
-      <!-- 우측: 활동 선택 -->
+      <!-- 우측: 활동 선택 + 순서 -->
       <div class="pane pane-right">
         <div class="pane-title-row">
           <p class="pane-title">포함할 활동</p>
-          <span v-if="allActivities.length > 0" class="selected-count">
-            {{ selectedIds.size }}개 선택됨
-          </span>
+          <span class="selected-count">{{ orderedSelectedIds.length }}개 선택됨</span>
         </div>
 
         <p v-if="allActivities.length === 0" class="empty-hint">
           등록된 활동이 없습니다.<br>활동 관리에서 먼저 추가하세요.
         </p>
-        <div v-else class="chip-scroll">
-          <button
-              v-for="act in sortedActivities"
-              :key="act.id"
-              type="button"
-              class="act-chip"
-              :class="{'act-chip--on': selectedIds.has(act.id)}"
-              @click="toggleActivity(act.id)"
-          >{{ act.name }}
-          </button>
-        </div>
+
+        <template v-else>
+          <!-- 선택된 활동 (순서 변경 가능) -->
+          <div class="selected-section">
+            <p class="sub-label">선택된 순서 (드래그로 변경)</p>
+            <div class="selected-list">
+              <div v-if="orderedSelectedActivities.length === 0" class="selected-empty">
+                아래에서 활동을 추가하세요
+              </div>
+              <div
+                  v-for="(act, idx) in orderedSelectedActivities"
+                  :key="act.id"
+                  class="selected-item"
+                  draggable="true"
+                  @dragstart="onDragStart(idx)"
+                  @dragover="onDragOver($event, idx)"
+                  @dragend="onDragEnd"
+              >
+                <Menu :size="14" class="drag-handle"/>
+                <span class="selected-item-name">{{ act.name }}</span>
+                <button type="button" class="btn-remove" @click="removeActivity(act.id)">
+                  <X :size="12"/>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 미선택 활동 추가 -->
+          <div class="available-section">
+            <p class="sub-label">추가 가능한 활동 (클릭하여 추가)</p>
+            <div v-if="unselectedActivities.length === 0" class="selected-empty">
+              모든 활동이 선택되었습니다
+            </div>
+            <div v-else class="chip-scroll">
+              <button
+                  v-for="act in unselectedActivities"
+                  :key="act.id"
+                  type="button"
+                  class="act-chip"
+                  @click="addActivity(act.id)"
+              >{{ act.name }}
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -360,6 +432,98 @@ function handleDelete() {
 
 .act-chip--on:hover {
   background-color: rgba(var(--accent-rgb), 0.22);
+}
+
+/* 선택된 활동 순서 패널 */
+.selected-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.available-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sub-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx-4);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--bd-1);
+  border-radius: 8px;
+  padding: 6px;
+  background-color: var(--bg-1);
+}
+
+.selected-empty {
+  font-size: 13px;
+  color: var(--tx-5);
+  padding: 8px 4px;
+  font-style: italic;
+}
+
+.selected-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background-color: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  cursor: grab;
+  user-select: none;
+}
+
+.selected-item:active { cursor: grabbing; }
+.selected-item[draggable="true"]:hover { background-color: rgba(var(--accent-rgb), 0.16); }
+
+.drag-handle {
+  color: var(--tx-4);
+  flex-shrink: 0;
+}
+
+.selected-item-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.btn-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  color: var(--tx-4);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.12s, background-color 0.12s;
+}
+
+.btn-remove:hover {
+  color: var(--clr-red-text);
+  background-color: var(--clr-red-bg);
 }
 
 /* 삭제 경고 */

@@ -10,6 +10,7 @@ import {
   Download,
   FolderOpen,
   GitBranch,
+  HelpCircle,
   Layers,
   LayoutDashboard,
   PenLine,
@@ -81,6 +82,11 @@ const navGroups = [
   {
     items: [
       {id: 'chat', label: 'AI 대화(Chat)', icon: Bot},
+    ],
+  },
+  {
+    items: [
+      {id: 'manual', label: '사용 설명서', icon: HelpCircle},
     ],
   },
 ]
@@ -272,8 +278,8 @@ const navGroups = [
 }
 
 .nav-item:hover {
-  background-color: var(--bg-hover-bright);
-  color: var(--tx-1);
+  background-color: rgba(var(--accent-rgb), 0.18);
+  color: var(--accent-text);
 }
 
 .nav-item--active {

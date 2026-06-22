@@ -146,6 +146,43 @@ pub struct PreviewImportItem {
     pub existing_content: String,
 }
 
+// ── 학생 전체 미리보기 관련 ──────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct ActivityPreviewItem {
+    pub activity_name: String,
+    pub content: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct StudentAreaPreview {
+    pub area_id: i64,
+    pub area_name: String,
+    pub byte_limit: i64,
+    pub total_bytes: i64,
+    pub activities: Vec<ActivityPreviewItem>,
+}
+
+// ── 전체 영역 바이트 합산 관련 ────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct AreaByteSummary {
+    pub area_id: i64,
+    pub area_name: String,
+    pub byte_limit: i64,
+    pub total_bytes: i64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct StudentByteRow {
+    pub student_id: i64,
+    pub grade: i64,
+    pub class_num: i64,
+    pub number: i64,
+    pub name: String,
+    pub areas: Vec<AreaByteSummary>,
+}
+
 // ── 스냅샷 관련 ──────────────────────────────────────────────
 
 #[derive(Serialize)]

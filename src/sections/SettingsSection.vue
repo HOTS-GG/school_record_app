@@ -460,8 +460,11 @@ function flash(target, msg) {
 
 <style scoped>
 .settings-wrapper {
+  height: 100%;
+  overflow-y: auto;
   padding: 40px 48px;
   background-color: var(--bg-0);
+  box-sizing: border-box;
 }
 
 .settings-content {

@@ -56,5 +56,13 @@ export const useRecordStore = defineStore('record', () => {
         }
     }
 
-    return {gridData, loading, error, fetchAreaGrid, upsertRecord, fetchRecordHistory, saveHistorySnapshot, previewImportRecords, bulkImportRecords}
+    async function getStudentFullPreview(studentId) {
+        return await invoke('get_student_full_preview', {studentId})
+    }
+
+    async function getAllAreasByteSummary() {
+        return await invoke('get_all_areas_byte_summary')
+    }
+
+    return {gridData, loading, error, fetchAreaGrid, upsertRecord, fetchRecordHistory, saveHistorySnapshot, previewImportRecords, bulkImportRecords, getStudentFullPreview, getAllAreasByteSummary}
 })

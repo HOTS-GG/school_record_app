@@ -743,7 +743,7 @@ onMounted(async () => {
 
 /* ── 패널 ─────────────────────────────────────────────────── */
 .panel {
-  background-color: var(--bg-0);
+  background-color: var(--bg-1);
   border: 1px solid var(--bd-1);
   border-radius: 10px;
   padding: 16px;
@@ -771,7 +771,7 @@ onMounted(async () => {
   gap: 8px;
   flex-wrap: wrap;
   padding: 12px;
-  background: var(--bg-0);
+  background: var(--bg-2);
   border-radius: 8px;
   margin-bottom: 10px;
 }
@@ -862,7 +862,7 @@ onMounted(async () => {
 }
 
 .old-text {
-  color: var(--clr-red-text);
+  color: var(--tx-1);
   font-family: monospace;
   font-size: 20px;
   white-space: pre;
@@ -871,7 +871,7 @@ onMounted(async () => {
 }
 
 .new-text {
-  color: var(--clr-green-bright);
+  color: var(--tx-1);
   font-family: monospace;
   font-size: 20px;
   white-space: pre;

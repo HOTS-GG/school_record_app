@@ -262,10 +262,10 @@ pub fn set_area_activities_impl(
         )
         .map_err(|e| e.to_string())?;
 
-        for act_id in activity_ids.iter() {
+        for (order, act_id) in activity_ids.iter().enumerate() {
             conn.execute(
-                "INSERT INTO AreaActivity (area_id, activity_id) VALUES (?1, ?2)",
-                rusqlite::params![area_id, act_id],
+                "INSERT INTO AreaActivity (area_id, activity_id, sort_order) VALUES (?1, ?2, ?3)",
+                rusqlite::params![area_id, act_id, order as i64],
             )
             .map_err(|e| e.to_string())?;
         }

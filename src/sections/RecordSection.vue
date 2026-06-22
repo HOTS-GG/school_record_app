@@ -1,6 +1,6 @@
 ﻿<script setup>
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {ALargeSmall, ArrowLeftRight, Brain, CircleAlert, Minimize2, Pin, PinOff, Sparkles} from 'lucide-vue-next'
+import {ALargeSmall, ArrowLeftRight, Brain, Clipboard, CircleAlert, Eye, Minimize2, Sparkles, TableProperties} from 'lucide-vue-next'
 import {useAreaStore} from '../stores/area'
 import {useRecordStore} from '../stores/record'
 import {useConfigStore} from '../stores/configStore'
@@ -8,6 +8,8 @@ import {useStudentStore} from '../stores/student'
 import CellHistoryModal from '../components/CellHistoryModal.vue'
 import AiSuggestModal from '../components/AiSuggestModal.vue'
 import StudentBehaviorModal from '../components/StudentBehaviorModal.vue'
+import StudentFullPreviewModal from '../components/StudentFullPreviewModal.vue'
+import AllAreaByteSummaryModal from '../components/AllAreaByteSummaryModal.vue'
 
 const areaStore = useAreaStore()
 const recordStore = useRecordStore()
@@ -16,10 +18,8 @@ const studentStore = useStudentStore()
 
 const selectedAreaId = ref(null)
 const loadError = ref('')
-const freezeColumns = ref(true)
 const smartScroll = ref(true)
 const compactCell = ref(true)
-const highlightEmpty = ref(false)
 const collapsedActivities = ref(new Set())
 
 // 학생 정보 열 너비 (px) — 드래그로 리사이즈
@@ -311,6 +311,9 @@ function isStudentEmpty(studentId) {
 // 셀 내용 클립보드 복사
 const copiedCells = ref(new Set())
 
+// 붙여넣기 모드: { content, label } | null
+const pasteSource = ref(null)
+
 async function copyCell(activityId, studentId) {
   const content = getCellContent(activityId, studentId)
   await navigator.clipboard.writeText(content)
@@ -321,7 +324,43 @@ async function copyCell(activityId, studentId) {
     copiedCells.value.delete(key)
     copiedCells.value = new Set(copiedCells.value)
   }, 1000)
+  // 붙여넣기 모드 활성화
+  const studentName = recordStore.gridData?.students.find(s => s.id === studentId)?.name ?? ''
+  const actName = recordStore.gridData?.activities.find(a => a.id === activityId)?.name ?? ''
+  pasteSource.value = {content, label: `${studentName} / ${actName}`}
 }
+
+function pasteCell(activityId, studentId) {
+  if (!pasteSource.value) return
+  const key = cellKey(activityId, studentId)
+  const map = new Map(cellContent.value)
+  map.set(key, pasteSource.value.content)
+  cellContent.value = map
+  saveCell(activityId, studentId, pasteSource.value.content)
+}
+
+function cancelPasteMode() {
+  pasteSource.value = null
+}
+
+// 미작성 학생만 보기 필터
+const filterEmptyOnly = ref(false)
+
+const displayedStudents = computed(() => {
+  if (!recordStore.gridData) return []
+  if (!filterEmptyOnly.value) return recordStore.gridData.students
+  return recordStore.gridData.students.filter(s => isStudentEmpty(s.id))
+})
+
+// 학생 미리보기 모달
+const previewModal = ref(null) // { studentId, studentName }
+
+function openPreviewModal(student) {
+  previewModal.value = {studentId: student.id, studentName: student.name}
+}
+
+// 전체 영역 바이트 합산 모달
+const byteSummaryVisible = ref(false)
 
 // 히스토리 모달
 const historyModal = ref(null) // { activityId, studentId, activityName, studentName }
@@ -384,7 +423,7 @@ function isNewGroup(students, index) {
 
 <template>
   <div class="activity-section-wrapper" :style="{ '--cell-fs': configStore.recordCellFontSize + 'px' }">
-    <div class="section" :class="{ 'section--frozen': freezeColumns }">
+    <div class="section">
 
       <!-- 상단 컨트롤 -->
       <div class="toolbar">
@@ -422,16 +461,6 @@ function isNewGroup(students, index) {
 
           <button
               class="btn-freeze"
-              :class="freezeColumns ? 'btn-freeze--on' : ''"
-              @click="freezeColumns = !freezeColumns"
-              title="틀고정 켜기/끄기"
-          >
-            <Pin v-if="freezeColumns" :size="15"/>
-            <PinOff v-else :size="15"/>
-            {{ freezeColumns ? '틀고정 ON' : '틀고정 OFF' }}
-          </button>
-          <button
-              class="btn-freeze"
               :class="smartScroll ? 'btn-freeze--on' : ''"
               @click="smartScroll = !smartScroll"
               title="스마트 스크롤: 활동 영역에서 휠 → 좌우 스크롤"
@@ -450,15 +479,6 @@ function isNewGroup(students, index) {
           </button>
           <button
               class="btn-freeze"
-              :class="highlightEmpty ? 'btn-freeze--on btn-freeze--warn' : ''"
-              @click="highlightEmpty = !highlightEmpty"
-              title="기록이 없는 학생 행 강조 켜기/끄기"
-          >
-            <CircleAlert :size="15"/>
-            {{ highlightEmpty ? '빈 학생 ON' : '빈 학생 OFF' }}
-          </button>
-          <button
-              class="btn-freeze"
               :disabled="!selectedAreaId || !recordStore.gridData || recordStore.gridData.students.length === 0"
               @click="behaviorModalVisible = true"
               title="학생 행동 프로필 관리"
@@ -466,7 +486,33 @@ function isNewGroup(students, index) {
             <Brain :size="15"/>
             행동 프로필
           </button>
+          <button
+              class="btn-freeze"
+              :class="filterEmptyOnly ? 'btn-freeze--on btn-freeze--warn' : ''"
+              :disabled="!recordStore.gridData"
+              @click="filterEmptyOnly = !filterEmptyOnly"
+              title="이 영역에서 아직 한 글자도 작성하지 않은 학생만 표시"
+          >
+            <CircleAlert :size="15"/>
+            {{ filterEmptyOnly ? '미작성만 표시 중' : '미작성만 보기' }}
+          </button>
+          <button
+              class="btn-freeze"
+              :disabled="!recordStore.gridData"
+              @click="byteSummaryVisible = true"
+              title="전체 영역 바이트 현황"
+          >
+            <TableProperties :size="15"/>
+            바이트 현황
+          </button>
         </div>
+      </div>
+
+      <!-- 붙여넣기 모드 배너 -->
+      <div v-if="pasteSource" class="paste-banner">
+        <Clipboard :size="15"/>
+        <span>붙여넣기 모드 — <strong>{{ pasteSource.label }}</strong> 내용을 다른 셀에 붙여넣을 수 있습니다.</span>
+        <button class="paste-cancel" @click="cancelPasteMode">✕ 취소</button>
       </div>
 
       <!-- 빈 상태: 영역 미선택 -->
@@ -501,36 +547,44 @@ function isNewGroup(students, index) {
       <!-- 그리드 -->
       <div v-else class="grid-wrapper" @wheel="onGridWheel">
         <table class="grid-table">
+          <!-- colgroup: 모든 열 너비를 한 곳에서 정의 → th/td 개별 width 불필요 -->
+          <colgroup>
+            <col :style="{ width: colWidths.grade + 'px' }">
+            <col :style="{ width: colWidths.cls + 'px' }">
+            <col :style="{ width: colWidths.number + 'px' }">
+            <col :style="{ width: colWidths.name + 'px' }">
+            <col :style="{ width: colWidths.total + 'px' }">
+            <col
+                v-for="act in recordStore.gridData.activities"
+                :key="act.id"
+                :style="collapsedActivities.has(act.id) ? { width: '80px' } : { width: '480px' }"
+            >
+          </colgroup>
           <thead>
           <tr>
             <th
-                class="th-fixed th-grade"
-                :class="freezeColumns ? 'sticky' : ''"
-                :style="{ left: leftPos.grade + 'px', width: colWidths.grade + 'px', minWidth: colWidths.grade + 'px' }"
+                class="th-fixed th-grade sticky"
+                :style="{ left: leftPos.grade + 'px' }"
             >학년<div class="col-resize-handle" @mousedown.stop.prevent="startResize('grade', $event)"/>
             </th>
             <th
-                class="th-fixed th-class"
-                :class="freezeColumns ? 'sticky' : ''"
-                :style="{ left: leftPos.cls + 'px', width: colWidths.cls + 'px', minWidth: colWidths.cls + 'px' }"
+                class="th-fixed th-class sticky"
+                :style="{ left: leftPos.cls + 'px' }"
             >반<div class="col-resize-handle" @mousedown.stop.prevent="startResize('cls', $event)"/>
             </th>
             <th
-                class="th-fixed th-number"
-                :class="freezeColumns ? 'sticky' : ''"
-                :style="{ left: leftPos.number + 'px', width: colWidths.number + 'px', minWidth: colWidths.number + 'px' }"
+                class="th-fixed th-number sticky"
+                :style="{ left: leftPos.number + 'px' }"
             >번호<div class="col-resize-handle" @mousedown.stop.prevent="startResize('number', $event)"/>
             </th>
             <th
-                class="th-fixed th-name"
-                :class="freezeColumns ? 'sticky' : ''"
-                :style="{ left: leftPos.name + 'px', width: colWidths.name + 'px', minWidth: colWidths.name + 'px' }"
+                class="th-fixed th-name sticky"
+                :style="{ left: leftPos.name + 'px' }"
             >이름<div class="col-resize-handle" @mousedown.stop.prevent="startResize('name', $event)"/>
             </th>
             <th
-                class="th-fixed th-total"
-                :class="freezeColumns ? 'sticky' : ''"
-                :style="{ left: leftPos.total + 'px', width: colWidths.total + 'px', minWidth: colWidths.total + 'px' }"
+                class="th-fixed th-total sticky"
+                :style="{ left: leftPos.total + 'px' }"
             >합계<div class="col-resize-handle" @mousedown.stop.prevent="startResize('total', $event)"/>
             </th>
             <th
@@ -538,7 +592,6 @@ function isNewGroup(students, index) {
                 :key="act.id"
                 class="th-activity"
                 :class="{ 'th-activity--collapsed': collapsedActivities.has(act.id) }"
-                :style="collapsedActivities.has(act.id) ? { width: '80px', minWidth: '80px', maxWidth: '80px' } : {}"
                 @click="toggleActivity(act.id)"
             >{{ collapsedActivities.has(act.id) ? truncateName(act.name) : act.name }}
             </th>
@@ -546,46 +599,49 @@ function isNewGroup(students, index) {
           </thead>
           <tbody>
           <tr
-              v-for="(student, idx) in recordStore.gridData.students"
+              v-for="(student, idx) in displayedStudents"
               :key="student.id"
-              :class="isNewGroup(recordStore.gridData.students, idx) ? 'row-group-start' : ''"
+              :class="isNewGroup(displayedStudents, idx) ? 'row-group-start' : ''"
           >
             <td
                 class="td-fixed td-grade"
-                :class="[freezeColumns ? 'sticky' : '', isStudentOverLimit(student.id) ? 'td-row--over' : (highlightEmpty && isStudentEmpty(student.id) ? 'td-row--empty' : '')]"
-                :style="{ left: leftPos.grade + 'px', width: colWidths.grade + 'px' }"
+                :class="['sticky', isStudentOverLimit(student.id) ? 'td-row--over' : '']"
+                :style="{ left: leftPos.grade + 'px' }"
             >{{ student.grade }}
             </td>
             <td
                 class="td-fixed td-class"
-                :class="[freezeColumns ? 'sticky' : '', isStudentOverLimit(student.id) ? 'td-row--over' : (highlightEmpty && isStudentEmpty(student.id) ? 'td-row--empty' : '')]"
-                :style="{ left: leftPos.cls + 'px', width: colWidths.cls + 'px' }"
+                :class="['sticky', isStudentOverLimit(student.id) ? 'td-row--over' : '']"
+                :style="{ left: leftPos.cls + 'px' }"
             >{{ student.class_num }}
             </td>
             <td
                 class="td-fixed td-number"
-                :class="[freezeColumns ? 'sticky' : '', isStudentOverLimit(student.id) ? 'td-row--over' : (highlightEmpty && isStudentEmpty(student.id) ? 'td-row--empty' : '')]"
-                :style="{ left: leftPos.number + 'px', width: colWidths.number + 'px' }"
+                :class="['sticky', isStudentOverLimit(student.id) ? 'td-row--over' : '']"
+                :style="{ left: leftPos.number + 'px' }"
             >{{ student.number }}
             </td>
             <td
                 class="td-fixed td-name"
-                :class="[freezeColumns ? 'sticky' : '', isStudentOverLimit(student.id) ? 'td-row--over' : (highlightEmpty && isStudentEmpty(student.id) ? 'td-row--empty' : '')]"
-                :style="{ left: leftPos.name + 'px', width: colWidths.name + 'px' }"
-            >{{ student.name }}
+                :class="['sticky', isStudentOverLimit(student.id) ? 'td-row--over' : '']"
+                :style="{ left: leftPos.name + 'px' }"
+            >
+              <div class="name-cell">
+                <span class="name-text">{{ student.name }}</span>
+                <button class="btn-preview" @click.stop="openPreviewModal(student)" title="생기부 전체 미리보기">
+                  <Eye :size="12"/>
+                </button>
+              </div>
             </td>
             <td
                 class="td-fixed td-total"
-                :class="[
-                freezeColumns ? 'sticky' : '',
-                isStudentOverLimit(student.id) ? 'td-total--over' : (highlightEmpty && isStudentEmpty(student.id) ? 'td-total--empty' : '')
-              ]"
-                :style="{ left: leftPos.total + 'px', width: colWidths.total + 'px' }"
+                :class="['sticky', isStudentOverLimit(student.id) ? 'td-total--over' : '']"
+                :style="{ left: leftPos.total + 'px' }"
             >
             <span
                 v-if="byteLimit"
                 class="total-bytes"
-                :class="isStudentOverLimit(student.id) ? 'total-bytes--over' : (highlightEmpty && isStudentEmpty(student.id) ? 'total-bytes--empty' : '')"
+                :class="isStudentOverLimit(student.id) ? 'total-bytes--over' : ''"
             >
               {{ studentTotalBytes(student.id) }} / {{ byteLimit }} Bytes
             </span>
@@ -594,7 +650,6 @@ function isNewGroup(students, index) {
                 v-for="act in recordStore.gridData.activities"
                 :key="act.id"
                 class="td-cell"
-                :style="collapsedActivities.has(act.id) ? { width: '80px', minWidth: '80px', maxWidth: '80px' } : {}"
                 :class="{
                 'td-cell--collapsed': collapsedActivities.has(act.id),
                 'td-cell--saving': getCellSavingState(act.id, student.id) === 'saving',
@@ -617,6 +672,12 @@ function isNewGroup(students, index) {
                   <button class="btn-history" @click.stop="copyCell(act.id, student.id)">
                     {{ copiedCells.has(cellKey(act.id, student.id)) ? 'Copied!' : 'Copy' }}
                   </button>
+                  <template v-if="pasteSource">
+                    <span class="history-sep">|</span>
+                    <button class="btn-paste" @click.stop="pasteCell(act.id, student.id)" title="붙여넣기">
+                      <Clipboard :size="11"/>붙여넣기
+                    </button>
+                  </template>
                   <span class="history-sep">|</span>
                   <button class="btn-history" @click.stop="openHistory(act, student)">History</button>
                   <span class="history-sep">|</span>
@@ -669,6 +730,20 @@ function isNewGroup(students, index) {
           @saved="handleBehaviorSaved"
       />
     </transition>
+
+    <!-- 학생 전체 미리보기 모달 -->
+    <StudentFullPreviewModal
+        v-if="previewModal"
+        :student-id="previewModal.studentId"
+        :student-name="previewModal.studentName"
+        @close="previewModal = null"
+    />
+
+    <!-- 전체 영역 바이트 합산 모달 -->
+    <AllAreaByteSummaryModal
+        v-if="byteSummaryVisible"
+        @close="byteSummaryVisible = false"
+    />
   </div>
 </template>
 
@@ -681,10 +756,6 @@ function isNewGroup(students, index) {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-}
-
-/* 틀고정 ON: section이 viewport 높이를 잡고 grid가 내부에서 자체 스크롤 → toolbar/thead 항상 상단 고정 */
-.section--frozen {
   height: 100%;
   overflow: hidden;
 }
@@ -838,13 +909,8 @@ function isNewGroup(students, index) {
   color: var(--clr-red-text);
 }
 
-/* 그리드 — 기본(틀고정 OFF): 가로 스크롤만, 세로는 자연스럽게 늘어나서 workspace-main이 스크롤 (toolbar 함께 스크롤됨) */
+/* 그리드 — 항상 남은 공간을 채우며 양방향 스크롤 */
 .grid-wrapper {
-  overflow-x: auto;
-}
-
-/* 틀고정 ON: grid-wrapper가 flex:1로 남은 영역을 잡고 자체 양방향 스크롤 → toolbar/thead 상단 고정 */
-.section--frozen .grid-wrapper {
   flex: 1;
   overflow: auto;
 }
@@ -854,17 +920,18 @@ function isNewGroup(students, index) {
   border-collapse: separate;
   border-spacing: 0;
   min-width: 100%;
+  table-layout: fixed;
 }
 
-/* 헤더 sticky — 틀고정 ON 일때만, tr이 아닌 th에 직접 적용 (브라우저 호환성 ↑) */
-.section--frozen .grid-table thead th {
+/* 헤더 항상 sticky — tr이 아닌 th에 직접 적용 (브라우저 호환성 ↑) */
+.grid-table thead th {
   position: sticky;
   top: 0;
   z-index: 3;
 }
 
-/* 좌상단 코너(고정 열 ∩ 고정 행)는 z-index 더 높여 다른 헤더 위에 그려지도록 */
-.section--frozen .grid-table thead th.sticky {
+/* 좌상단 코너(고정 열 ∩ 고정 행)는 z-index 더 높여 스크롤 콘텐츠 위에 유지 */
+.grid-table thead th.sticky {
   z-index: 5;
 }
 
@@ -882,8 +949,6 @@ function isNewGroup(students, index) {
 }
 
 .th-activity {
-  width: 320px;
-  min-width: 280px;
   cursor: pointer;
   user-select: none;
   white-space: normal;
@@ -1012,14 +1077,6 @@ thead .sticky {
   font-weight: 700;
 }
 
-.td-row--empty,
-.td-total--empty {
-  background-color: var(--clr-warn-cell-bg) !important;
-}
-
-.total-bytes--empty {
-  color: var(--clr-warn-text);
-}
 
 .btn-freeze--warn {
   color: var(--clr-warn-text) !important;
@@ -1032,13 +1089,12 @@ thead .sticky {
   border-top: 1px solid rgba(var(--accent-rgb), 0.3);
 }
 
-/* 셀 */
+/* 셀 — colgroup이 너비를 결정하므로 width/min-width 불필요 */
 .td-cell {
   padding: 6px 8px;
-  width: 600px;
-  min-width: 480px;
   position: relative;
   transition: background-color 0.5s ease;
+  overflow: hidden;
 }
 
 .td-cell--saving {
@@ -1150,5 +1206,97 @@ thead .sticky {
   background: rgba(var(--accent-rgb), 0.25);
   border-color: rgba(var(--accent-rgb), 0.7);
   color: var(--accent-bright);
+}
+
+/* 붙여넣기 버튼 */
+.btn-paste {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid rgba(var(--clr-green-rgb), 0.5);
+  background: var(--clr-green-bg);
+  color: var(--clr-green-text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.btn-paste:hover {
+  background: rgba(var(--clr-green-rgb), 0.2);
+}
+
+/* 붙여넣기 모드 배너 */
+.paste-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 24px;
+  background-color: var(--clr-green-bg);
+  border-bottom: 1px solid var(--clr-green-border);
+  color: var(--clr-green-text);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.paste-banner strong {
+  font-weight: 700;
+}
+
+.paste-cancel {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--clr-green-border);
+  background: none;
+  color: var(--clr-green-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.paste-cancel:hover { background: rgba(var(--clr-green-rgb), 0.15); }
+
+/* 이름 셀 미리보기 버튼 */
+.name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.name-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-preview {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  color: var(--tx-5);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+tr:hover .btn-preview {
+  opacity: 1;
+}
+
+.btn-preview:hover {
+  color: var(--accent-text);
 }
 </style>

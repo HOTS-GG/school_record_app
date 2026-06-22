@@ -82,6 +82,8 @@ fn main() {
             save_history_snapshot,
             bulk_import_records,
             preview_import_records,
+            get_student_full_preview,
+            get_all_areas_byte_summary,
             write_bytes_file,
             read_image_base64,
             // 스냅샷

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS AreaActivity
 (
     area_id       INTEGER NOT NULL,
     activity_id   INTEGER NOT NULL,
+    sort_order    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (area_id, activity_id),
     FOREIGN KEY (area_id) REFERENCES Area (id) ON DELETE CASCADE,
     FOREIGN KEY (activity_id) REFERENCES Activity (id) ON DELETE CASCADE

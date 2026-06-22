@@ -248,7 +248,7 @@ function submit() {
   display: flex;
   flex-direction: column;
   padding: 4px 0 8px 20px;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--bg-0);
 }
 
 .student-item {

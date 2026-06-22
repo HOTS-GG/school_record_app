@@ -211,45 +211,43 @@ async function handleStudentSaved(studentIds) {
     </div>
 
     <!-- 영역 편집 모달 -->
-    <transition name="modal">
-      <AreaModal
-          ref="areaModalRef"
-          v-if="modalVisible"
-          :mode="modalMode"
-          :area="selectedArea"
-          :all-activities="activityStore.activities"
-          :submitting="saving"
-          @close="closeModal"
-          @saved="handleSaved"
-          @deleted="handleDeleted"
-      />
-    </transition>
+    <AreaModal
+        ref="areaModalRef"
+        v-if="modalVisible"
+        :mode="modalMode"
+        :area="selectedArea"
+        :all-activities="activityStore.activities"
+        :submitting="saving"
+        @close="closeModal"
+        @saved="handleSaved"
+        @deleted="handleDeleted"
+    />
 
     <!-- 학생 배정 모달 -->
-    <transition name="modal">
-      <AreaStudentModal
-          ref="areaStudentModalRef"
-          v-if="studentModalVisible"
-          :area="studentModalArea"
-          :all-students="studentStore.students"
-          :initial-student-ids="studentModalInitialIds"
-          @close="closeStudentModal"
-          @saved="handleStudentSaved"
-      />
-    </transition>
+    <AreaStudentModal
+        ref="areaStudentModalRef"
+        v-if="studentModalVisible"
+        :area="studentModalArea"
+        :all-students="studentStore.students"
+        :initial-student-ids="studentModalInitialIds"
+        @close="closeStudentModal"
+        @saved="handleStudentSaved"
+    />
 
     <!-- 기본 영역 추가 모달 -->
-    <transition name="modal">
-      <SeedAreaModal
-          v-if="seedModalVisible"
-          @close="seedModalVisible = false"
-          @seed="handleSeedSelected"
-      />
-    </transition>
+    <SeedAreaModal
+        v-if="seedModalVisible"
+        @close="seedModalVisible = false"
+        @seed="handleSeedSelected"
+    />
   </div>
 </template>
 
 <style scoped>
+.activity-section-wrapper {
+  height: 100%;
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -440,12 +438,4 @@ async function handleStudentSaved(studentIds) {
   gap: 16px;
 }
 
-/* 모달 트랜지션 */
-.modal-enter-from, .modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active, .modal-leave-active {
-  transition: opacity 0.2s;
-}
 </style>

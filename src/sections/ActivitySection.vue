@@ -146,6 +146,10 @@ async function handleDeleted() {
 </template>
 
 <style scoped>
+.activity-section-wrapper {
+  height: 100%;
+}
+
 .section {
   display: flex;
   flex-direction: column;

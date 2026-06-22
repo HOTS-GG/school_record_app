@@ -2,8 +2,9 @@ use crate::commands::crypto::resolve_data_key;
 use crate::crypto::{maybe_decrypt, maybe_encrypt};
 use crate::state::{CryptoStateHandle, DbState};
 use crate::types::{
-    ActivityItem, AreaGridData, BulkImportResult, HistoryEntry, ImportRecordInput,
-    PreviewImportItem, RecordCell, StudentItem,
+    ActivityItem, ActivityPreviewItem, AreaByteSummary, AreaGridData, BulkImportResult,
+    HistoryEntry, ImportRecordInput, PreviewImportItem, RecordCell, StudentAreaPreview,
+    StudentByteRow, StudentItem,
 };
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ pub fn get_area_grid_impl(
              FROM Activity act
              JOIN AreaActivity aa ON act.id = aa.activity_id
              WHERE aa.area_id = ?1
-             ORDER BY act.name ASC",
+             ORDER BY aa.sort_order ASC, act.name ASC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -532,4 +533,170 @@ pub fn preview_import_records(
         .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
     let key = resolve_data_key(conn, &crypto)?;
     preview_import_records_impl(conn, &records, key)
+}
+
+// UTF-8 바이트 수 계산 (엔터 \n → \r\n 으로 처리, 프론트엔드와 동일 로직)
+fn byte_length(s: &str) -> i64 {
+    let normalized = s.replace('\r', "").replace('\n', "\r\n");
+    normalized.len() as i64
+}
+
+#[tauri::command]
+pub fn get_student_full_preview(
+    student_id: i64,
+    state: State<DbState>,
+    crypto: State<CryptoStateHandle>,
+) -> Result<Vec<StudentAreaPreview>, String> {
+    let guard = state.0.lock().unwrap();
+    let conn = guard
+        .as_ref()
+        .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+    let key = resolve_data_key(conn, &crypto)?;
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT a.id, a.name, a.byte_limit,
+                    act.id, act.name,
+                    COALESCE(ar.content, '') AS content
+             FROM Area a
+             JOIN AreaStudent as_ ON a.id = as_.area_id AND as_.student_id = ?1
+             JOIN AreaActivity aa ON a.id = aa.area_id
+             JOIN Activity act ON aa.activity_id = act.id
+             LEFT JOIN ActivityRecord ar ON ar.activity_id = act.id AND ar.student_id = ?1
+             ORDER BY a.id, aa.sort_order ASC, act.name ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![student_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut areas: Vec<StudentAreaPreview> = Vec::new();
+    let mut area_index: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+
+    for (area_id, area_name, byte_limit, _act_id, act_name, content_raw) in rows {
+        let content = maybe_decrypt(content_raw, key)?;
+        let idx = if let Some(&i) = area_index.get(&area_id) {
+            i
+        } else {
+            let i = areas.len();
+            areas.push(StudentAreaPreview {
+                area_id,
+                area_name,
+                byte_limit,
+                total_bytes: 0,
+                activities: Vec::new(),
+            });
+            area_index.insert(area_id, i);
+            i
+        };
+        let b = byte_length(&content);
+        areas[idx].total_bytes += b;
+        areas[idx].activities.push(ActivityPreviewItem {
+            activity_name: act_name,
+            content,
+        });
+    }
+
+    Ok(areas)
+}
+
+#[tauri::command]
+pub fn get_all_areas_byte_summary(
+    state: State<DbState>,
+    crypto: State<CryptoStateHandle>,
+) -> Result<Vec<StudentByteRow>, String> {
+    let guard = state.0.lock().unwrap();
+    let conn = guard
+        .as_ref()
+        .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+    let key = resolve_data_key(conn, &crypto)?;
+
+    // 학생 × 영역 × 활동 레코드를 한 번에 조회
+    let mut stmt = conn
+        .prepare(
+            "SELECT s.id, s.grade, s.class_num, s.number, s.name,
+                    a.id, a.name, a.byte_limit,
+                    COALESCE(ar.content, '') AS content
+             FROM Student s
+             JOIN AreaStudent as_ ON s.id = as_.student_id
+             JOIN Area a ON a.id = as_.area_id
+             JOIN AreaActivity aa ON aa.area_id = a.id
+             JOIN Activity act ON act.id = aa.activity_id
+             LEFT JOIN ActivityRecord ar ON ar.activity_id = act.id AND ar.student_id = s.id
+             ORDER BY s.grade, s.class_num, s.number, a.id",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, i64>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut students: Vec<StudentByteRow> = Vec::new();
+    let mut student_index: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+    // (student_id, area_id) → index in student.areas
+    let mut area_index: std::collections::HashMap<(i64, i64), usize> = std::collections::HashMap::new();
+
+    for (s_id, grade, class_num, number, name_raw, a_id, a_name, byte_limit, content_raw) in rows {
+        let name = maybe_decrypt(name_raw, key)?;
+        let content = maybe_decrypt(content_raw, key)?;
+        let b = byte_length(&content);
+
+        let s_idx = if let Some(&i) = student_index.get(&s_id) {
+            i
+        } else {
+            let i = students.len();
+            students.push(StudentByteRow {
+                student_id: s_id,
+                grade,
+                class_num,
+                number,
+                name,
+                areas: Vec::new(),
+            });
+            student_index.insert(s_id, i);
+            i
+        };
+
+        let area_key = (s_id, a_id);
+        if let Some(&a_idx) = area_index.get(&area_key) {
+            students[s_idx].areas[a_idx].total_bytes += b;
+        } else {
+            let a_idx = students[s_idx].areas.len();
+            students[s_idx].areas.push(AreaByteSummary {
+                area_id: a_id,
+                area_name: a_name,
+                byte_limit,
+                total_bytes: b,
+            });
+            area_index.insert(area_key, a_idx);
+        }
+    }
+
+    Ok(students)
 }
