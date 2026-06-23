@@ -100,7 +100,7 @@ fn test_update_rule_changes_all_fields() {
     let conn = setup_test_db();
     let rule = create_replace_rule_db(&conn, "old", "new", false, 0).unwrap();
 
-    let updated = update_replace_rule_db(&conn, rule.id, "OLD2", "NEW2", true, false, 5).unwrap();
+    let updated = update_replace_rule_db(&conn, rule.id, "OLD2", "NEW2", true, false, 5, None).unwrap();
 
     assert_eq!(updated.old_text, "OLD2");
     assert_eq!(updated.new_text, "NEW2");
@@ -115,7 +115,7 @@ fn test_update_rule_toggle_enabled() {
     let rule = create_replace_rule_db(&conn, "abc", "xyz", false, 0).unwrap();
     assert!(rule.enabled);
 
-    let updated = update_replace_rule_db(&conn, rule.id, "abc", "xyz", false, false, 0).unwrap();
+    let updated = update_replace_rule_db(&conn, rule.id, "abc", "xyz", false, false, 0, None).unwrap();
     assert!(!updated.enabled);
 }
 
@@ -162,7 +162,7 @@ fn test_disabled_rule_excluded_from_conflicts() {
     );
 
     // rule B 비활성화
-    update_replace_rule_db(&conn, rule_b.id, "BB", "CC", false, false, 1).unwrap();
+    update_replace_rule_db(&conn, rule_b.id, "BB", "CC", false, false, 1, None).unwrap();
 
     let rules = get_replace_rules_impl(&conn).unwrap();
     let ra = rules.iter().find(|r| r.id == rule_a.id).unwrap();
@@ -220,7 +220,7 @@ fn test_update_replace_rule_negative_priority_violates_check() {
     // UPDATE: OR IGNORE 없음 → CHECK 위반 직접 전파
     let conn = setup_test_db();
     let rule = create_replace_rule_db(&conn, "a", "b", false, 0).unwrap();
-    let err = update_replace_rule_db(&conn, rule.id, "a", "b", false, true, -1).unwrap_err();
+    let err = update_replace_rule_db(&conn, rule.id, "a", "b", false, true, -1, None).unwrap_err();
     assert!(err.contains("CHECK constraint failed"), "priority=-1 UPDATE CHECK 위반이어야 함: {err}");
 }
 

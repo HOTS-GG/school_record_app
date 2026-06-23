@@ -1,5 +1,6 @@
 <script setup>
 import {computed, onMounted, ref} from 'vue'
+import {useRouter} from 'vue-router'
 import {getCurrentWindow} from '@tauri-apps/api/window'
 import {LogicalSize} from '@tauri-apps/api/dpi'
 import {useProjectStore} from '../stores/project'
@@ -21,10 +22,16 @@ import SettingsSection from '../sections/SettingsSection.vue'
 import ManualSection from '../sections/ManualSection.vue'
 import SnapshotModal from '../components/SnapshotModal.vue'
 
+const router = useRouter()
 const project = useProjectStore()
 const config = useConfigStore()
 const themeStore = useThemeStore()
 const collapsed = ref(false)
+
+function goHome() {
+  project.closeProject()
+  router.push('/')
+}
 const activeSection = ref('overview')
 const sectionKey = ref(0)
 const showSnapshotModal = ref(false)
@@ -68,6 +75,7 @@ onMounted(async () => {
         :file-path="project.filePath"
         @select="activeSection = $event"
         @openSnapshot="showSnapshotModal = true"
+        @go-home="goHome"
     />
     <main class="workspace-main">
       <component :is="currentSection" :key="sectionKey" @navigate="activeSection = $event"/>

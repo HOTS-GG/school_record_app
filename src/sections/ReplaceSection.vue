@@ -26,14 +26,14 @@ const step = ref(1)
 
 // ── 규칙 인라인 편집 ───────────────────────────────────────
 const editingId = ref(null)
-const editForm = ref({oldText: '', newText: '', priority: 0, isRegex: false})
+const editForm = ref({oldText: '', newText: '', priority: 0, isRegex: false, note: ''})
 const editError = ref('')
 const operationError = ref('')
 const isAdjusting = ref(false)
 
 function startEdit(rule) {
   editingId.value = rule.id
-  editForm.value = {oldText: rule.old_text, newText: rule.new_text, priority: rule.priority, isRegex: rule.is_regex}
+  editForm.value = {oldText: rule.old_text, newText: rule.new_text, priority: rule.priority, isRegex: rule.is_regex, note: rule.note ?? ''}
 }
 
 function cancelEdit() {
@@ -50,6 +50,7 @@ async function commitEdit(rule) {
         rule.enabled,
         editForm.value.priority,
         editForm.value.isRegex,
+        editForm.value.note || null,
     )
     editingId.value = null
   } catch (e) {
@@ -342,6 +343,9 @@ onMounted(async () => {
                     <X :size="15"/>
                   </button>
                 </div>
+                <div class="edit-note-row">
+                  <input v-model="editForm.note" class="input-sm input-note" placeholder="규칙 설명 (선택)"/>
+                </div>
                 <p v-if="editError" class="error-msg">{{ editError }}</p>
               </template>
 
@@ -358,15 +362,18 @@ onMounted(async () => {
                 </div>
 
                 <div class="col-old">
-                  <span v-if="rule.is_regex" class="badge-regex">정규식</span>
-                  <span class="old-text">{{ rule.old_text }}</span>
-                  <span
-                      v-if="rule.conflicts?.length > 0"
-                      class="conflict-badge"
-                      :title="`충돌 규칙 ID: ${rule.conflicts.join(', ')}`"
-                  >
-                    <TriangleAlert :size="14"/>
-                  </span>
+                  <div class="col-old-main">
+                    <span v-if="rule.is_regex" class="badge-regex">정규식</span>
+                    <span class="old-text">{{ rule.old_text }}</span>
+                    <span
+                        v-if="rule.conflicts?.length > 0"
+                        class="conflict-badge"
+                        :title="`충돌 규칙 ID: ${rule.conflicts.join(', ')}`"
+                    >
+                      <TriangleAlert :size="14"/>
+                    </span>
+                  </div>
+                  <p v-if="rule.note" class="rule-note">{{ rule.note }}</p>
                 </div>
 
                 <div class="col-arrow">
@@ -759,7 +766,7 @@ onMounted(async () => {
 .panel-title {
   font-size: 18px;
   font-weight: 600;
-  color: var(--tx-5);
+  color: var(--tx-2);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -790,7 +797,7 @@ onMounted(async () => {
   grid-template-columns: 72px 1fr 36px 1fr 64px 76px;
   gap: 8px;
   font-size: 18px;
-  align-items: center;
+  align-items: start;
 }
 
 .rule-header-row {
@@ -815,6 +822,14 @@ onMounted(async () => {
   transition: background-color 0.1s;
 }
 
+/* note가 있어 행 높이가 늘어날 때 화살표·토글·액션은 상단에서 약간 내려 시각적 가운데 유지 */
+.rule-row .col-arrow,
+.rule-row .col-toggle,
+.rule-row .col-actions,
+.rule-row .col-priority {
+  padding-top: 2px;
+}
+
 .rule-row:hover {
   background-color: var(--bg-1);
 }
@@ -829,6 +844,30 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.edit-note-row {
+  grid-column: 1 / -1;
+  padding: 0 0 4px 0;
+}
+
+.input-note {
+  width: 100%;
+  font-size: 13px;
+}
+
+.col-old-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rule-note {
+  font-size: 12px;
+  color: var(--tx-4);
+  margin: 0;
+  line-height: 1.4;
 }
 
 /* 우선순위 컨트롤 */
@@ -849,8 +888,8 @@ onMounted(async () => {
 }
 
 /* 텍스트 열 */
-.col-old,
 .col-new {
+  padding-top: 2px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -858,7 +897,11 @@ onMounted(async () => {
 }
 
 .col-old {
-  justify-content: flex-end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  overflow: visible;
 }
 
 .old-text {
@@ -1129,7 +1172,7 @@ onMounted(async () => {
 
 .diff-label {
   font-size: 14px;
-  color: var(--tx-4);
+  color: var(--tx-3);
 }
 
 .diff-sep {

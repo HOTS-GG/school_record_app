@@ -44,7 +44,7 @@ pub fn hash_content(content: &str) -> u64 {
     hasher.finish()
 }
 
-pub fn apply_rules(content: &str, rules: &[ReplaceRule]) -> String {
+fn apply_rules_once(content: &str, rules: &[ReplaceRule]) -> String {
     let mut result = content.to_string();
     for rule in rules.iter().filter(|r| r.enabled) {
         if rule.is_regex {
@@ -54,6 +54,19 @@ pub fn apply_rules(content: &str, rules: &[ReplaceRule]) -> String {
         } else {
             result = result.replace(&rule.old_text, &rule.new_text);
         }
+    }
+    result
+}
+
+pub fn apply_rules(content: &str, rules: &[ReplaceRule]) -> String {
+    let mut result = content.to_string();
+    // 규칙 연쇄 적용 시 한 패스로 끝나지 않는 경우를 위해 수렴할 때까지 반복 (최대 8회)
+    for _ in 0..8 {
+        let next = apply_rules_once(&result, rules);
+        if next == result {
+            break;
+        }
+        result = next;
     }
     result
 }
@@ -104,7 +117,7 @@ pub fn detect_conflicts(rules: &[ReplaceRule]) -> HashMap<i64, Vec<i64>> {
 pub fn fetch_rules_from_db(conn: &Connection) -> Result<Vec<ReplaceRule>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, old_text, new_text, is_regex, enabled, priority, created_at, updated_at
+            "SELECT id, old_text, new_text, is_regex, enabled, priority, note, created_at, updated_at
              FROM ReplaceRule ORDER BY priority ASC, old_text ASC, new_text ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -118,8 +131,9 @@ pub fn fetch_rules_from_db(conn: &Connection) -> Result<Vec<ReplaceRule>, String
                 is_regex: row.get::<_, i64>(3)? != 0,
                 enabled: row.get::<_, i64>(4)? != 0,
                 priority: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                note: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
                 conflicts: vec![],
             })
         })

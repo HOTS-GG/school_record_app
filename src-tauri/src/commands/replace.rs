@@ -54,7 +54,7 @@ pub fn create_replace_rule_db(
 
     let id = conn.last_insert_rowid();
     conn.query_row(
-        "SELECT id, old_text, new_text, is_regex, enabled, priority, created_at, updated_at
+        "SELECT id, old_text, new_text, is_regex, enabled, priority, note, created_at, updated_at
          FROM ReplaceRule WHERE id = ?1",
         rusqlite::params![id],
         |row| {
@@ -65,8 +65,9 @@ pub fn create_replace_rule_db(
                 is_regex: row.get::<_, i64>(3)? != 0,
                 enabled: row.get::<_, i64>(4)? != 0,
                 priority: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                note: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
                 conflicts: vec![],
             })
         },
@@ -82,20 +83,21 @@ pub fn update_replace_rule_db(
     is_regex: bool,
     enabled: bool,
     priority: i64,
+    note: Option<&str>,
 ) -> Result<ReplaceRule, String> {
     let enabled_int: i64 = if enabled { 1 } else { 0 };
     let is_regex_int: i64 = if is_regex { 1 } else { 0 };
     conn.execute(
         "UPDATE ReplaceRule
-         SET old_text=?1, new_text=?2, is_regex=?3, enabled=?4, priority=?5,
+         SET old_text=?1, new_text=?2, is_regex=?3, enabled=?4, priority=?5, note=?6,
              updated_at=datetime('now')
-         WHERE id=?6",
-        rusqlite::params![old_text, new_text, is_regex_int, enabled_int, priority, id],
+         WHERE id=?7",
+        rusqlite::params![old_text, new_text, is_regex_int, enabled_int, priority, note, id],
     )
     .map_err(|e| e.to_string())?;
 
     conn.query_row(
-        "SELECT id, old_text, new_text, is_regex, enabled, priority, created_at, updated_at
+        "SELECT id, old_text, new_text, is_regex, enabled, priority, note, created_at, updated_at
          FROM ReplaceRule WHERE id = ?1",
         rusqlite::params![id],
         |row| {
@@ -106,8 +108,9 @@ pub fn update_replace_rule_db(
                 is_regex: row.get::<_, i64>(3)? != 0,
                 enabled: row.get::<_, i64>(4)? != 0,
                 priority: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
+                note: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
                 conflicts: vec![],
             })
         },
@@ -197,6 +200,7 @@ pub fn update_replace_rule(
     is_regex: bool,
     enabled: bool,
     priority: i64,
+    note: Option<String>,
     state: State<DbState>,
     cache: State<ReplaceCacheState>,
 ) -> Result<ReplaceRule, String> {
@@ -207,7 +211,7 @@ pub fn update_replace_rule(
         .as_ref()
         .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
 
-    let rule = update_replace_rule_db(conn, id, &old_text, &new_text, is_regex, enabled, priority)?;
+    let rule = update_replace_rule_db(conn, id, &old_text, &new_text, is_regex, enabled, priority, note.as_deref())?;
     drop(guard);
     cache.lock().unwrap().ruleset_version += 1;
     Ok(rule)

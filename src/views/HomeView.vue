@@ -3,9 +3,13 @@ import {onMounted, ref} from 'vue'
 import {useRouter} from 'vue-router'
 import {invoke} from '@tauri-apps/api/core'
 import {open, save} from '@tauri-apps/plugin-dialog'
+import schoolLogo from '../assets/school_logo.svg'
 import {getVersion} from '@tauri-apps/api/app'
+import {getCurrentWindow} from '@tauri-apps/api/window'
+import {LogicalSize} from '@tauri-apps/api/dpi'
 import {useProjectStore} from '../stores/project'
 import {useConfigStore} from '../stores/configStore'
+import {useThemeStore} from '../stores/theme'
 import PasswordModal from '../components/PasswordModal.vue'
 import ReleaseNotesModal from '../components/ReleaseNotesModal.vue'
 import {getNotesToShow} from '../data/releaseNotes'
@@ -13,6 +17,7 @@ import {getNotesToShow} from '../data/releaseNotes'
 const router = useRouter()
 const project = useProjectStore()
 const config = useConfigStore()
+const themeStore = useThemeStore()
 const error = ref('')
 
 const currentVersion = ref('')
@@ -26,6 +31,12 @@ const releaseNotesToShow = ref([])
 
 onMounted(async () => {
   currentVersion.value = await getVersion()
+  themeStore.resetToDefault()
+  try {
+    const win = getCurrentWindow()
+    await win.setSize(new LogicalSize(1280, 720))
+    await win.center()
+  } catch { }
 })
 
 async function handleNew() {
@@ -69,14 +80,14 @@ async function handleOpen() {
 
 async function showReleaseNotesOrNavigate() {
   await project.backupProject()
-  await project.migrateSchema()
-  const oldVersion = await project.checkAndUpdateVersion()
-  if (oldVersion !== null) {
-    releaseNotesToShow.value = getNotesToShow(oldVersion)
-    showReleaseNotesModal.value = true
-  } else {
-    router.push('/workspace')
+  try {
+    await project.migrateSchema()
+  } catch (e) {
+    error.value = `DB 마이그레이션 실패: ${e}`
+    return
   }
+  await project.checkAndUpdateVersion()
+  router.push('/workspace')
 }
 
 async function handlePasswordSubmit({password}) {
@@ -107,8 +118,9 @@ function handlePasswordCancel() {
 <template>
   <div class="activity-section-wrapper">
     <div class="page">
-      <!-- ambient glow -->
-      <div class="glow"/>
+      <!-- 배경 이미지 (블러) -->
+      <div class="bg-image"/>
+      <div class="bg-dim"/>
 
       <!-- 플로팅 카드 -->
       <div class="card">
@@ -116,15 +128,10 @@ function handlePasswordCancel() {
         <!-- 로고 -->
         <div class="logo-wrap">
           <div class="logo-icon">
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none"
-                 stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            <span class="logo-badge"/>
+            <img :src="schoolLogo" alt="학교 로고" class="logo-img"/>
           </div>
           <div class="logo-text">
-            <h1>All-in-One 학교생활기록부 에디터</h1>
+            <h1>춘천고등학교 생기부ON</h1>
             <p>학생부를 체계적으로 작성하기 위한 교육용 프로그램</p>
           </div>
         </div>
@@ -279,11 +286,22 @@ function handlePasswordCancel() {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-/* 배경 glow */
-.glow {
+/* 배경 이미지 — inset: -20px 으로 blur 가장자리 잘림 방지 */
+.bg-image {
+  position: absolute;
+  inset: -20px;
+  background-image: url('/background.webp');
+  background-size: cover;
+  background-position: center;
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+/* 어둡게 덮는 딤 레이어 */
+.bg-dim {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(var(--accent-rgb), 0.12), transparent);
+  background: rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
@@ -310,27 +328,18 @@ function handlePasswordCancel() {
 }
 
 .logo-icon {
-  position: relative;
-  width: 68px;
-  height: 68px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, var(--accent-hex), var(--accent-hex-hover));
+  width: 96px;
+  height: 96px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 0 1px var(--clr-warn-border), 0 8px 32px rgba(var(--accent-rgb), 0.35);
+  filter: drop-shadow(0 4px 16px rgba(51, 181, 64, 0.35));
 }
 
-.logo-badge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background-color: var(--clr-warn-text);
-  border: 2px solid var(--bg-2);
-  box-shadow: 0 0 8px rgba(var(--clr-warn-rgb), 0.5);
+.logo-img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
 }
 
 .logo-text {

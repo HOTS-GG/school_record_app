@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS ReplaceRule
     is_regex   INTEGER NOT NULL DEFAULT 0,
     enabled    INTEGER NOT NULL DEFAULT 1,
     priority   INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
+    note       TEXT,
     created_at TEXT    NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE (old_text, new_text)

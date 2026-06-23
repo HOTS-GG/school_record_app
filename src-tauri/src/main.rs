@@ -21,6 +21,13 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // 윈도우 아이콘 설정 (개발 모드에서도 반영)
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    let _ = window.set_icon(icon);
+                }
+            }
+
             // 앱 전역 설정 DB 초기화 (%APPDATA%\school-record-app\config.db)
             // API 키, AI 모델 등 프로젝트와 무관한 설정 저장
             let app_data_dir = app.path().app_data_dir()

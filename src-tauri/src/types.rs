@@ -70,6 +70,7 @@ pub struct ReplaceRule {
     pub is_regex: bool,
     pub enabled: bool,
     pub priority: i64,
+    pub note: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub conflicts: Vec<i64>,

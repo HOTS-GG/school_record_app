@@ -132,5 +132,11 @@ export const useThemeStore = defineStore('theme', () => {
     } catch { /* ignore */ }
   }
 
-  return { isDark, accentHex, loadAndApply, setMode, setAccentColor }
+  function resetToDefault() {
+    isDark.value = false
+    accentHex.value = DEFAULT_ACCENT
+    applyAll(false, DEFAULT_ACCENT)
+  }
+
+  return { isDark, accentHex, loadAndApply, setMode, setAccentColor, resetToDefault }
 })

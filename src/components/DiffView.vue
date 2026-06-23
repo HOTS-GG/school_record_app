@@ -32,6 +32,7 @@ const parts = computed(() => diffChars(props.before, props.after))
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
+  color: var(--tx-2);
 }
 
 .diff-added {

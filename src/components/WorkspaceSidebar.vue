@@ -1,6 +1,7 @@
 ﻿<script setup>
 import {computed} from 'vue'
 import {revealItemInDir} from '@tauri-apps/plugin-opener'
+import schoolLogo from '../assets/school_logo.svg'
 import {
   BookOpen,
   Bot,
@@ -27,7 +28,7 @@ const props = defineProps({
   filePath: String,
 })
 
-const emit = defineEmits(['update:collapsed', 'select', 'openSnapshot'])
+const emit = defineEmits(['update:collapsed', 'select', 'openSnapshot', 'go-home'])
 
 const fileName = computed(() => {
   if (!props.filePath) return ''
@@ -97,10 +98,11 @@ const navGroups = [
 
     <!-- 상단: 타이틀 + 토글 -->
     <div class="sidebar-header">
-      <div v-if="!collapsed" class="sidebar-title">
-        <span class="title-badge">생기부</span>
-        <span class="title-text">학교생활기록부</span>
+      <div v-if="!collapsed" class="sidebar-title" @click="emit('go-home')" title="초기 화면으로">
+        <img :src="schoolLogo" alt="로고" class="sidebar-logo"/>
+        <span class="title-text">생기부ON</span>
       </div>
+      <img v-else :src="schoolLogo" alt="초기 화면으로" class="sidebar-logo sidebar-logo--collapsed" @click="emit('go-home')" title="초기 화면으로"/>
       <button class="toggle-btn" @click="toggle" :title="collapsed ? '사이드바 열기' : '사이드바 접기'">
         <ChevronLeft v-if="!collapsed" :size="18"/>
         <ChevronRight v-else :size="18"/>
@@ -202,17 +204,29 @@ const navGroups = [
   gap: 6px;
   overflow: hidden;
   white-space: nowrap;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.12s;
 }
 
-.title-badge {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--clr-warn-text);
-  background-color: var(--clr-warn-bg);
-  border: 1px solid var(--clr-warn-border);
-  border-radius: 5px;
-  padding: 1px 6px;
+.sidebar-title:hover {
+  background-color: rgba(var(--accent-rgb), 0.1);
+}
+
+
+.sidebar-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
   flex-shrink: 0;
+}
+
+.sidebar-logo--collapsed {
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
 }
 
 .title-text {
