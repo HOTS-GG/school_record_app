@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct ActivityItem {
     pub id: i64,
     pub name: String,
+    pub prompt: Option<String>,
+    pub date_info: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -29,6 +31,8 @@ pub struct AreaRef {
 pub struct ActivityDetail {
     pub id: i64,
     pub name: String,
+    pub prompt: Option<String>,
+    pub date_info: Option<String>,
     pub areas: Vec<AreaRef>,
     pub record_count: i64,
 }

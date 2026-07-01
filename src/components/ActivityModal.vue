@@ -13,6 +13,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved', 'deleted'])
 
 const name = ref('')
+const prompt = ref('')
+const dateInfo = ref('')
 const error = ref('')
 const confirmDelete = ref(false)
 const selectedAreaIds = ref(new Set())
@@ -21,6 +23,8 @@ watch(
     () => props.activity,
     (a) => {
       name.value = a ? a.name : ''
+      prompt.value = a?.prompt ?? ''
+      dateInfo.value = a?.date_info ?? ''
       selectedAreaIds.value = new Set(a ? a.areas.map(x => x.id) : [])
       error.value = ''
       confirmDelete.value = false
@@ -54,6 +58,8 @@ function submit() {
   emit('saved', {
     name: name.value.trim(),
     areaIds: [...selectedAreaIds.value],
+    prompt: prompt.value.trim() || null,
+    dateInfo: dateInfo.value.trim() || null,
   })
 }
 
@@ -97,6 +103,31 @@ function handleDelete() {
             영역(Area) 안에 포함될 세부 활동명입니다.
           </p>
         </div>
+
+        <!-- AI 프롬프트 (편집 모드만) -->
+        <template v-if="mode === 'edit'">
+          <div class="field">
+            <label class="field-label">활동 내용/일정 메모</label>
+            <textarea
+                v-model="dateInfo"
+                class="ui-input field-textarea"
+                placeholder="예: 5월 15일 학급자치 회의, 6월 3일 환경 캠페인 참여..."
+                rows="3"
+            />
+            <p class="field-hint">AI 생성 시 이 활동에서 무엇을 했는지, 언제 했는지 참고합니다.</p>
+          </div>
+
+          <div class="field">
+            <label class="field-label">활동별 AI 추가 지침</label>
+            <textarea
+                v-model="prompt"
+                class="ui-input field-textarea"
+                placeholder="예: 이 활동에서는 학생의 리더십과 협업 능력을 강조해 주세요."
+                rows="3"
+            />
+            <p class="field-hint">전역 지침 → 영역 지침 → 이 지침 순으로 AI에게 전달됩니다.</p>
+          </div>
+        </template>
 
         <!-- 삭제 경고 (편집 + 확인 단계) -->
         <div v-if="mode === 'edit' && confirmDelete" class="delete-warning">
@@ -240,8 +271,18 @@ function handleDelete() {
   color: var(--clr-red-text);
 }
 
-.field-input::placeholder {
+.field-input::placeholder,
+.field-textarea::placeholder {
   color: var(--clr-text-hint);
+}
+
+.field-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 72px;
 }
 
 .field-hint {

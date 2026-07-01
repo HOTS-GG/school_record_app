@@ -42,7 +42,7 @@ function closeModal() {
   selectedActivity.value = null
 }
 
-async function handleSaved({name, areaIds}) {
+async function handleSaved({name, areaIds, prompt, dateInfo}) {
   if (isSubmitting.value) return
   isSubmitting.value = true
   try {
@@ -51,6 +51,8 @@ async function handleSaved({name, areaIds}) {
       id: selectedActivity.value?.id,
       name,
       areaIds,
+      prompt,
+      dateInfo,
     })
     await areaStore.fetchAreas()
     closeModal()

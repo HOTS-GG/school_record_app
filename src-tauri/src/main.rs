@@ -92,6 +92,7 @@ fn main() {
             get_student_full_preview,
             get_all_areas_byte_summary,
             write_bytes_file,
+            read_file_base64,
             read_image_base64,
             // 스냅샷
             create_snapshot,
@@ -112,6 +113,10 @@ fn main() {
             add_synonym_word,
             delete_synonym_word,
             seed_default_synonyms,
+            // 맞춤법 검사
+            check_spelling,
+            check_speller_online,
+            get_records_for_spell,
             // 점검
             get_all_records_for_inspect,
             // 설정 (프로젝트 DB)

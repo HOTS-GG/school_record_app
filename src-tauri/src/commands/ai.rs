@@ -77,6 +77,7 @@ pub async fn ai_generate_record(
     current_content: String,
     byte_limit: Option<i64>,
     area_id: i64,
+    activity_id: i64,
     requirements: Option<String>,
     state: State<'_, DbState>,
     global: State<'_, GlobalConfigState>,
@@ -93,32 +94,48 @@ pub async fn ai_generate_record(
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
-        // 영역별 프롬프트는 프로젝트 DB에서 읽기
-        let area_prompt: Option<String> = if area_id > 0 {
+        // 전역 → 영역 → 활동 순서로 프롬프트 적층
+        let global_prompt = read_global_str(&gcfg, "ai_system_prompt")?
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
+
+        let (area_prompt, activity_prompt, activity_date_info): (Option<String>, Option<String>, Option<String>) = {
             let guard = state.0.lock().unwrap();
             if let Some(conn) = guard.as_ref() {
-                conn.query_row(
-                    "SELECT prompt FROM Area WHERE id = ?1",
-                    rusqlite::params![area_id],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|e| e.to_string())?
-                .flatten()
+                let ap = if area_id > 0 {
+                    conn.query_row(
+                        "SELECT prompt FROM Area WHERE id = ?1",
+                        rusqlite::params![area_id],
+                        |row| row.get(0),
+                    ).optional().map_err(|e| e.to_string())?.flatten()
+                } else { None };
+
+                let (actp, actd) = if activity_id > 0 {
+                    conn.query_row(
+                        "SELECT prompt, date_info FROM Activity WHERE id = ?1",
+                        rusqlite::params![activity_id],
+                        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?)),
+                    ).optional().map_err(|e| e.to_string())?.unwrap_or((None, None))
+                } else { (None, None) };
+
+                (ap, actp, actd)
             } else {
-                None
+                (None, None, None)
             }
-        } else {
-            None
         };
 
-        let system_prompt = if let Some(p) = area_prompt.filter(|s| !s.trim().is_empty()) {
-            p
-        } else {
-            read_global_str(&gcfg, "ai_system_prompt")?
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string())
-        };
+        // 비어있지 않은 레이어만 개행으로 합치기
+        let mut layers = vec![global_prompt];
+        if let Some(p) = area_prompt.filter(|s| !s.trim().is_empty()) {
+            layers.push(format!("[영역 추가 지침]\n{p}"));
+        }
+        if let Some(p) = activity_prompt.filter(|s| !s.trim().is_empty()) {
+            layers.push(format!("[활동 추가 지침]\n{p}"));
+        }
+        if let Some(d) = activity_date_info.filter(|s| !s.trim().is_empty()) {
+            layers.push(format!("[활동 내용/일정 메모]\n{d}"));
+        }
+        let system_prompt = layers.join("\n\n");
 
         (api_key, model, system_prompt)
     };

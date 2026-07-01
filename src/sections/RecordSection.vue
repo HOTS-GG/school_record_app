@@ -919,7 +919,7 @@ function isNewGroup(students, index) {
 .grid-table {
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 100%;
+  width: max-content;
   table-layout: fixed;
 }
 

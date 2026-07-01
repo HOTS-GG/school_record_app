@@ -10,6 +10,7 @@ pub mod record;
 pub mod replace;
 pub mod snapshot;
 pub mod student;
+pub mod speller;
 pub mod synonym;
 
 pub use activity::*;
@@ -24,4 +25,5 @@ pub use record::*;
 pub use replace::*;
 pub use snapshot::*;
 pub use student::*;
+pub use speller::*;
 pub use synonym::*;

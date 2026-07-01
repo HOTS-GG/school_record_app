@@ -10,6 +10,14 @@ pub fn write_bytes_file(path: String, data: String) -> Result<(), String> {
     std::fs::write(&path, bytes).map_err(|e| e.to_string())
 }
 
+/// 로컬 파일을 base64 문자열로 반환 (엑셀 등 바이너리 파일 읽기용)
+#[tauri::command]
+pub fn read_file_base64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
 /// 로컬 이미지 파일을 base64 data URL로 반환 (asset 프로토콜 한글 경로 문제 우회)
 #[tauri::command]
 pub fn read_image_base64(path: String) -> Result<String, String> {

@@ -27,8 +27,10 @@ CREATE TABLE IF NOT EXISTS Area
 
 CREATE TABLE IF NOT EXISTS Activity
 (
-    id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,
+    prompt    TEXT,
+    date_info TEXT
 );
 
 -- ================================================================

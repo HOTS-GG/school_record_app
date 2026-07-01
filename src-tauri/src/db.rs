@@ -6,7 +6,7 @@ use std::path::Path;
 /// 스키마 변경 시 이 값을 올리고 MIGRATIONS 배열에 SQL을 추가한다.
 /// 중요: 스키마 버전을 올릴 때는 반드시 Cargo.toml의 version(app_version)도 함께 올려야 한다.
 /// app_version이 바뀌지 않으면 릴리즈 노트 모달이 표시되지 않는다.
-pub const SCHEMA_VERSION: u32 = 8;
+pub const SCHEMA_VERSION: u32 = 9;
 
 /// 인덱스 i: 버전 i → i+1 로 올리는 SQL.
 /// [0] v0→v1: 버전 도입 이전 DB를 v1으로 승격. 스키마는 IF NOT EXISTS로 생성되어 있으므로 SQL 없음.
@@ -66,6 +66,9 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE ReplaceRule ADD COLUMN note TEXT;
      UPDATE ReplaceRule SET note = '줄바꿈(엔터) 1개 이상을 공백 하나로 교체 — 규칙 13과 세트' WHERE old_text = '\\n+' AND is_regex = 1;
      UPDATE ReplaceRule SET note = '공백 2개 이상 연속을 공백 하나로 교체 — 규칙 12 이후 중복 공백 정리' WHERE old_text = ' {2,}' AND is_regex = 1;",
+    // v8 → v9: Activity에 prompt/date_info 컬럼 추가 (활동별 AI 프롬프트 및 날짜/내용 메모)
+    "ALTER TABLE Activity ADD COLUMN prompt TEXT;
+     ALTER TABLE Activity ADD COLUMN date_info TEXT;",
 ];
 
 // ── 내부 헬퍼 ────────────────────────────────────────────────

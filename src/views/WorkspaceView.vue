@@ -17,6 +17,7 @@ import ExportSection from '../sections/ExportSection.vue'
 import ChecklistSection from '../sections/ChecklistSection.vue'
 import ReplaceSection from '../sections/ReplaceSection.vue'
 import InspectSection from '../sections/InspectSection.vue'
+import SpellSection from '../sections/SpellSection.vue'
 import ChatSection from '../sections/ChatSection.vue'
 import SettingsSection from '../sections/SettingsSection.vue'
 import ManualSection from '../sections/ManualSection.vue'
@@ -47,6 +48,7 @@ const sectionMap = {
   checklist: ChecklistSection,
   replace: ReplaceSection,
   inspect: InspectSection,
+  spell: SpellSection,
   chat: ChatSection,
   settings: SettingsSection,
   manual: ManualSection,

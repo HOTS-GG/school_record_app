@@ -235,7 +235,7 @@ onMounted(async () => {
     <!-- 헤더 -->
     <div class="toolbar">
       <div class="section-header">
-        <h2 class="section-title">텍스트 치환(Replace)</h2>
+        <h2 class="section-title">문장 정리(Replace)</h2>
         <p class="section-desc">학교생활기록부 문장의 특수문자, 텍스트 등을 일괄 교체합니다.</p>
       </div>
     </div>
@@ -254,7 +254,7 @@ onMounted(async () => {
       <!-- ─── Step 1: 규칙 관리 ─────────────────────────────── -->
       <div v-if="step === 1" class="step-content">
         <div class="step-header">
-          <h3 class="step-title">Step 1. 텍스트 치환 규칙</h3>
+          <h3 class="step-title">Step 1. 문장 정리 규칙</h3>
           <p class="step-desc">찾아 바꿀 텍스트 규칙을 관리합니다. <u>우선순위 숫자가 작은 규칙부터 먼저 실행</u>됩니다.</p>
         </div>
 
@@ -547,7 +547,7 @@ onMounted(async () => {
         <!-- 적용 결과 -->
         <div v-if="applyResult" class="result-box">
           <div class="result-check">✓</div>
-          <p class="result-title">텍스트 치환 완료</p>
+          <p class="result-title">문장 정리 완료</p>
           <div class="result-stats">
             <div class="stat-item">
               <span class="stat-val">{{ applyResult.changed_count }}건 적용 완료</span>

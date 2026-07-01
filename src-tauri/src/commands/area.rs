@@ -32,7 +32,8 @@ pub fn get_areas_impl(conn: &Connection) -> Result<Vec<AreaItem>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT a.id, a.name, a.byte_limit, a.prompt, a.role, a.behavior_items,
-                    act.id AS act_id, act.name AS act_name
+                    act.id AS act_id, act.name AS act_name,
+                    act.prompt AS act_prompt, act.date_info AS act_date_info
              FROM Area a
              LEFT JOIN AreaActivity aa ON a.id = aa.area_id
              LEFT JOIN Activity act ON aa.activity_id = act.id
@@ -54,12 +55,14 @@ pub fn get_areas_impl(conn: &Connection) -> Result<Vec<AreaItem>, String> {
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<i64>>(6)?,
                 row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<String>>(9)?,
             ))
         })
         .map_err(|e| e.to_string())?;
 
     for row in rows {
-        let (area_id, area_name, byte_limit, prompt, role, behavior_items, act_id, act_name) =
+        let (area_id, area_name, byte_limit, prompt, role, behavior_items, act_id, act_name, act_prompt, act_date_info) =
             row.map_err(|e| e.to_string())?;
 
         let idx = if let Some(&i) = index_map.get(&area_id) {
@@ -80,7 +83,7 @@ pub fn get_areas_impl(conn: &Connection) -> Result<Vec<AreaItem>, String> {
         };
 
         if let (Some(id), Some(name)) = (act_id, act_name) {
-            areas[idx].activities.push(ActivityItem { id, name });
+            areas[idx].activities.push(ActivityItem { id, name, prompt: act_prompt, date_info: act_date_info });
         }
     }
 

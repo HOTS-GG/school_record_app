@@ -7,7 +7,7 @@ use tauri::State;
 pub fn get_activities_impl(conn: &Connection) -> Result<Vec<ActivityDetail>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT act.id, act.name, a.id AS area_id, a.name AS area_name,
+            "SELECT act.id, act.name, act.prompt, act.date_info, a.id AS area_id, a.name AS area_name,
                     (SELECT COUNT(*) FROM ActivityRecord ar WHERE ar.activity_id = act.id) AS record_count
              FROM Activity act
              LEFT JOIN AreaActivity aa ON act.id = aa.activity_id
@@ -24,15 +24,17 @@ pub fn get_activities_impl(conn: &Connection) -> Result<Vec<ActivityDetail>, Str
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
-                row.get::<_, i64>(4)?,
+                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i64>(6)?,
             ))
         })
         .map_err(|e| e.to_string())?;
 
     for row in rows {
-        let (act_id, act_name, area_id, area_name, record_count) = row.map_err(|e| e.to_string())?;
+        let (act_id, act_name, act_prompt, act_date_info, area_id, area_name, record_count) = row.map_err(|e| e.to_string())?;
 
         let idx = if let Some(&i) = index_map.get(&act_id) {
             i
@@ -41,6 +43,8 @@ pub fn get_activities_impl(conn: &Connection) -> Result<Vec<ActivityDetail>, Str
             activities.push(ActivityDetail {
                 id: act_id,
                 name: act_name,
+                prompt: act_prompt,
+                date_info: act_date_info,
                 areas: vec![],
                 record_count,
             });
@@ -66,10 +70,10 @@ pub fn create_activity_impl(conn: &Connection, name: &str) -> Result<i64, String
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_activity_impl(conn: &Connection, id: i64, name: &str) -> Result<(), String> {
+pub fn update_activity_impl(conn: &Connection, id: i64, name: &str, prompt: Option<&str>, date_info: Option<&str>) -> Result<(), String> {
     conn.execute(
-        "UPDATE Activity SET name = ?1 WHERE id = ?2",
-        rusqlite::params![name, id],
+        "UPDATE Activity SET name = ?1, prompt = ?2, date_info = ?3 WHERE id = ?4",
+        rusqlite::params![name, prompt, date_info, id],
     )
     .map_err(|e| unique_err(&e, &format!("이미 같은 이름의 활동이 있습니다: {name}")))?;
 
@@ -138,12 +142,12 @@ pub fn create_activity(name: String, state: State<DbState>) -> Result<i64, Strin
 }
 
 #[tauri::command]
-pub fn update_activity(id: i64, name: String, state: State<DbState>) -> Result<(), String> {
+pub fn update_activity(id: i64, name: String, prompt: Option<String>, date_info: Option<String>, state: State<DbState>) -> Result<(), String> {
     let guard = state.0.lock().unwrap();
     let conn = guard
         .as_ref()
         .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
-    update_activity_impl(conn, id, &name)
+    update_activity_impl(conn, id, &name, prompt.as_deref(), date_info.as_deref())
 }
 
 #[tauri::command]

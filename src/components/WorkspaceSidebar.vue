@@ -1,6 +1,6 @@
 ﻿<script setup>
 import {computed} from 'vue'
-import {revealItemInDir} from '@tauri-apps/plugin-opener'
+import {revealItemInDir, openUrl} from '@tauri-apps/plugin-opener'
 import schoolLogo from '../assets/school_logo.svg'
 import {
   BookOpen,
@@ -18,6 +18,7 @@ import {
   Replace,
   ScanSearch,
   Settings,
+  SpellCheck,
   Upload,
   Users,
 } from 'lucide-vue-next'
@@ -40,6 +41,10 @@ function toggle() {
 }
 
 function select(section) {
+  if (section === 'spell') {
+    openUrl('https://nara-speller.co.kr/speller/')
+    return
+  }
   emit('select', section)
 }
 
@@ -69,8 +74,9 @@ const navGroups = [
   },
   {
     items: [
-      {id: 'replace', label: '텍스트 치환(Replace)', icon: Replace},
+      {id: 'replace', label: '문장 정리(Replace)', icon: Replace},
       {id: 'inspect', label: '유의어 점검(Inspect)', icon: ScanSearch},
+      {id: 'spell', label: '맞춤법 검사(Spell)', icon: SpellCheck},
     ],
   },
   {

@@ -24,7 +24,7 @@ export const useActivityStore = defineStore('activity', () => {
         await fetchActivities()
     }
 
-    async function saveActivity({mode, id, name, areaIds}) {
+    async function saveActivity({mode, id, name, areaIds, prompt = null, dateInfo = null}) {
         loading.value = true
         error.value = ''
         try {
@@ -33,7 +33,7 @@ export const useActivityStore = defineStore('activity', () => {
                 activityId = await invoke('create_activity', {name})
             } else {
                 activityId = id
-                await invoke('update_activity', {id: activityId, name})
+                await invoke('update_activity', {id: activityId, name, prompt: prompt || null, dateInfo: dateInfo || null})
             }
             await invoke('set_activity_areas', {activityId, areaIds})
             await fetchActivities()

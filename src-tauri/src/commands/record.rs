@@ -17,7 +17,7 @@ pub fn get_area_grid_impl(
 ) -> Result<AreaGridData, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT act.id, act.name
+            "SELECT act.id, act.name, act.prompt, act.date_info
              FROM Activity act
              JOIN AreaActivity aa ON act.id = aa.activity_id
              WHERE aa.area_id = ?1
@@ -30,6 +30,8 @@ pub fn get_area_grid_impl(
             Ok(ActivityItem {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                prompt: row.get(2)?,
+                date_info: row.get(3)?,
             })
         })
         .map_err(|e| e.to_string())?

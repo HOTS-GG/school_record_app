@@ -1,17 +1,19 @@
 ﻿<script setup>
 import {computed, onMounted, ref, watch} from 'vue'
 import {invoke} from '@tauri-apps/api/core'
-import {save} from '@tauri-apps/plugin-dialog'
+import {open, save} from '@tauri-apps/plugin-dialog'
 import {revealItemInDir} from '@tauri-apps/plugin-opener'
 import {Workbook} from 'exceljs'
 import {
   Check,
   ChevronRight,
   FileDown,
+  FileUp,
   Loader2,
   Plus,
   ScanSearch,
   Trash2,
+  Upload,
   X,
 } from 'lucide-vue-next'
 import {useSynonymStore} from '../stores/synonymStore'
@@ -116,6 +118,118 @@ async function submitCsv(groupId) {
     store.error = String(e)
   } finally {
     csvUploading.value[groupId] = false
+  }
+}
+
+// ── 엑셀 업로드/다운로드 ─────────────────────────────────────
+const xlsxImporting = ref(false)
+const xlsxImportError = ref('')
+const xlsxImportResult = ref(null) // { added: n, groups: n }
+
+async function downloadSynonymXlsx() {
+  const path = await save({
+    title: '유의어 목록 저장',
+    defaultPath: '유의어목록.xlsx',
+    filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+  })
+  if (!path) return
+
+  const wb = new Workbook()
+  const ws = wb.addWorksheet('유의어목록')
+  ws.columns = [
+    { header: '그룹명', key: 'group', width: 20 },
+    { header: '유의어', key: 'word', width: 40 },
+  ]
+  ws.getRow(1).font = { bold: true }
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } }
+
+  for (const g of store.groups) {
+    for (const item of g.items) {
+      ws.addRow({ group: g.name, word: item.word })
+    }
+  }
+
+  const buf = await wb.xlsx.writeBuffer()
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+  await invoke('write_bytes_file', { path, data: b64 })
+}
+
+async function downloadSynonymTemplate() {
+  const path = await save({
+    title: '유의어 템플릿 저장',
+    defaultPath: '유의어_템플릿.xlsx',
+    filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+  })
+  if (!path) return
+  const wb = new Workbook()
+  const ws = wb.addWorksheet('유의어목록')
+  ws.columns = [
+    { header: '그룹명', key: 'group', width: 20 },
+    { header: '유의어', key: 'word', width: 40 },
+  ]
+  ws.getRow(1).font = { bold: true }
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } }
+  ws.addRow({ group: '예시 그룹', word: '단어1' })
+  ws.addRow({ group: '예시 그룹', word: '단어2' })
+  ws.addRow({ group: '예시 그룹', word: '단어3' })
+  const buf = await wb.xlsx.writeBuffer()
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+  await invoke('write_bytes_file', { path, data: b64 })
+}
+
+async function importSynonymXlsx() {
+  const path = await open({
+    title: '유의어 엑셀 파일 선택',
+    filters: [{ name: 'Excel', extensions: ['xlsx'] }],
+    multiple: false,
+  })
+  if (!path) return
+
+  xlsxImporting.value = true
+  xlsxImportError.value = ''
+  xlsxImportResult.value = null
+  try {
+    const b64 = await invoke('read_file_base64', { path })
+    const binary = atob(b64)
+    const buf = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i)
+
+    const wb = new Workbook()
+    await wb.xlsx.load(buf.buffer)
+    const ws = wb.worksheets[0]
+    if (!ws) throw new Error('시트를 찾을 수 없습니다.')
+
+    // 그룹명 → 단어 목록 맵으로 합치기
+    const groupMap = new Map()
+    ws.eachRow((row, rowNum) => {
+      if (rowNum === 1) return
+      const groupName = String(row.getCell(1).value ?? '').trim()
+      const word = String(row.getCell(2).value ?? '').trim()
+      if (!groupName || !word) return
+      if (!groupMap.has(groupName)) groupMap.set(groupName, [])
+      groupMap.get(groupName).push(word)
+    })
+
+    let addedGroups = 0
+    let addedWords = 0
+    for (const [groupName, words] of groupMap.entries()) {
+      let group = store.groups.find(g => g.name === groupName)
+      if (!group) {
+        await store.addGroup(groupName)
+        group = store.groups.find(g => g.name === groupName)
+        addedGroups++
+      }
+      if (group) {
+        await store.addWordsBatch(group.id, words)
+        addedWords += words.length
+      }
+    }
+
+    xlsxImportResult.value = { groups: addedGroups, words: addedWords }
+  } catch (e) {
+    xlsxImportError.value = String(e)
+  } finally {
+    xlsxImporting.value = false
   }
 }
 
@@ -456,6 +570,29 @@ onMounted(() => {
               그룹 추가
             </button>
           </div>
+
+          <!-- 엑셀 업로드/다운로드 -->
+          <div class="xlsx-toolbar">
+            <div class="xlsx-toolbar-left">
+              <button class="btn-xlsx" @click="importSynonymXlsx" :disabled="xlsxImporting">
+                <FileUp :size="15"/>
+                {{ xlsxImporting ? '가져오는 중...' : '엑셀로 일괄 등록' }}
+              </button>
+              <button class="btn-xlsx btn-xlsx-secondary" @click="downloadSynonymTemplate">
+                <FileDown :size="15"/>
+                템플릿 다운로드
+              </button>
+            </div>
+            <button class="btn-xlsx btn-xlsx-secondary" @click="downloadSynonymXlsx" :disabled="store.groups.length === 0">
+              <FileDown :size="15"/>
+              유의어 목록 내보내기
+            </button>
+          </div>
+          <div v-if="xlsxImportResult" class="xlsx-result">
+            ✓ {{ xlsxImportResult.groups }}개 그룹, {{ xlsxImportResult.words }}개 단어 추가됨
+          </div>
+          <div v-if="xlsxImportError" class="error-box" style="margin-top: 8px;">{{ xlsxImportError }}</div>
+          <p class="xlsx-hint">엑셀 형식: A열 = 그룹명, B열 = 유의어(쉼표로 구분)</p>
 
         </template>
       </div>
@@ -1356,11 +1493,75 @@ onMounted(() => {
   display: inline-block;
   margin: 2px 3px 2px 0;
   padding: 2px 8px;
-  background: rgba(var(--accent-rgb), 0.12);
-  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  background: rgba(var(--accent-rgb), 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
   border-radius: 12px;
   font-size: 12px;
-  color: var(--accent-bright);
+  color: var(--accent-text);
+}
+
+/* ── 엑셀 업로드/다운로드 ────────────────────────────────── */
+.xlsx-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--bd-1);
+}
+
+.xlsx-toolbar-left {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-xlsx {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s;
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent-text);
+  border-color: rgba(var(--accent-rgb), 0.25);
+}
+
+.btn-xlsx:hover:not(:disabled) {
+  background: rgba(var(--accent-rgb), 0.2);
+}
+
+.btn-xlsx:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-xlsx-secondary {
+  background: var(--bg-1);
+  color: var(--tx-3);
+  border-color: var(--bd-1);
+}
+
+.btn-xlsx-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.xlsx-result {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--clr-green-text);
+  font-weight: 500;
+}
+
+.xlsx-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--tx-4);
 }
 
 /* ── Step 3: 빈 상태 ─────────────────────────────────────── */

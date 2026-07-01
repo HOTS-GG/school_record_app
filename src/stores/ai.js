@@ -134,7 +134,7 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   // { text, model, prompt_tokens, completion_tokens, total_tokens } 반환
-  async function generateRecord({ studentName, areaName, activityName, currentContent, byteLimit, areaId, requirements }) {
+  async function generateRecord({ studentName, areaName, activityName, currentContent, byteLimit, areaId, activityId, requirements }) {
     return await invoke('ai_generate_record', {
       studentName,
       areaName,
@@ -142,6 +142,7 @@ export const useAiStore = defineStore('ai', () => {
       currentContent,
       byteLimit: byteLimit ?? null,
       areaId: areaId ?? 0,
+      activityId: activityId ?? 0,
       requirements: requirements ?? null,
     })
   }
