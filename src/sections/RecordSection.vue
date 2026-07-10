@@ -1,6 +1,6 @@
 ﻿<script setup>
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {ALargeSmall, ArrowLeftRight, Brain, Clipboard, CircleAlert, Eye, FileText, Minimize2, Sparkles, TableProperties, Trash2} from 'lucide-vue-next'
+import {ALargeSmall, ArrowLeftRight, Brain, Clipboard, CircleAlert, Eye, FileText, Minimize2, Sparkles, TableProperties} from 'lucide-vue-next'
 import {open as openDialog} from '@tauri-apps/plugin-dialog'
 import {useAreaStore} from '../stores/area'
 import {useRecordStore} from '../stores/record'
@@ -12,6 +12,7 @@ import AiSuggestModal from '../components/AiSuggestModal.vue'
 import StudentBehaviorModal from '../components/StudentBehaviorModal.vue'
 import StudentFullPreviewModal from '../components/StudentFullPreviewModal.vue'
 import AllAreaByteSummaryModal from '../components/AllAreaByteSummaryModal.vue'
+import CellPdfBatchModal from '../components/CellPdfBatchModal.vue'
 
 const areaStore = useAreaStore()
 const recordStore = useRecordStore()
@@ -163,6 +164,7 @@ watch(selectedAreaId, async (id) => {
     savingState.value = new Map()
     collapsedActivities.value = new Set()
     await loadBehaviorMap()
+    await loadAreaPdfNotes(id)
     if (!compactCell.value) {
       await nextTick()
       document.querySelectorAll('.cell-input').forEach(el => autoResize(el))
@@ -352,29 +354,42 @@ function cancelPasteMode() {
 }
 
 // PDF 분석
-// cellKey → { summary, fileName } | null
+// cellKey → [{id, summary, fileName}] (파일당 1건)
 const pdfNotes = ref(new Map())
 // PDF 분석 진행 중인 셀 키 집합
 const pdfAnalyzing = ref(new Set())
+// 일괄 분석 모달
+const pdfBatchVisible = ref(false)
 
-async function loadPdfNote(activityId, studentId) {
-  const note = await aiStore.getCellPdfNote(activityId, studentId)
-  const key = cellKey(activityId, studentId)
-  const next = new Map(pdfNotes.value)
-  if (note) {
-    next.set(key, { summary: note.ai_summary, fileName: note.file_name })
-  } else {
-    next.delete(key)
+// 영역 전체 PDF 노트 일괄 로드 (영역 선택 시 / 변경 발생 시)
+async function loadAreaPdfNotes(areaId) {
+  const notes = await aiStore.getAreaPdfNotes(areaId)
+  const map = new Map()
+  for (const n of notes) {
+    const key = cellKey(n.activity_id, n.student_id)
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push({ id: n.id, summary: n.ai_summary, fileName: n.file_name, enabled: n.enabled })
   }
-  pdfNotes.value = next
+  pdfNotes.value = map
+}
+
+// 일괄 모달에서 분석/삭제 발생 시 재로드
+async function onPdfNotesChanged() {
+  if (selectedAreaId.value) await loadAreaPdfNotes(selectedAreaId.value)
+}
+
+function cellPdfNotes(activityId, studentId) {
+  return pdfNotes.value.get(cellKey(activityId, studentId)) ?? []
 }
 
 async function openPdfForCell(act, student) {
   const selected = await openDialog({
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
-    multiple: false,
+    multiple: true,
   })
   if (!selected) return
+  const paths = Array.isArray(selected) ? selected : [selected]
+  if (!paths.length) return
 
   const key = cellKey(act.id, student.id)
   const next = new Set(pdfAnalyzing.value)
@@ -382,25 +397,16 @@ async function openPdfForCell(act, student) {
   pdfAnalyzing.value = next
 
   try {
-    const summary = await aiStore.analyzeCellPdf(act.id, student.id, selected)
-    const noteMap = new Map(pdfNotes.value)
-    noteMap.set(key, { summary, fileName: selected.split(/[\\/]/).pop() })
-    pdfNotes.value = noteMap
+    await aiStore.analyzeCellPdf(act.id, student.id, paths)
+    await onPdfNotesChanged()
   } catch (e) {
     alert(`PDF 분석 실패: ${e}`)
+    await onPdfNotesChanged() // 일부 파일은 저장됐을 수 있음
   } finally {
     const s = new Set(pdfAnalyzing.value)
     s.delete(key)
     pdfAnalyzing.value = s
   }
-}
-
-async function deletePdfNote(activityId, studentId) {
-  await aiStore.deleteCellPdfNote(activityId, studentId)
-  const key = cellKey(activityId, studentId)
-  const next = new Map(pdfNotes.value)
-  next.delete(key)
-  pdfNotes.value = next
 }
 
 // 미작성 학생만 보기 필터
@@ -545,6 +551,15 @@ function isNewGroup(students, index) {
           >
             <Brain :size="15"/>
             행동 프로필
+          </button>
+          <button
+              class="btn-freeze"
+              :disabled="!selectedAreaId || !recordStore.gridData || recordStore.gridData.students.length === 0 || recordStore.gridData.activities.length === 0"
+              @click="pdfBatchVisible = true"
+              title="학생별 활동 PDF를 AI로 일괄 분석"
+          >
+            <FileText :size="15"/>
+            학생 활동 PDF 분석
           </button>
           <button
               class="btn-freeze"
@@ -744,28 +759,24 @@ function isNewGroup(students, index) {
                   <button class="btn-ai-gen" @click.stop="openAiModal(act, student)" title="AI로 문구 생성">
                     <Sparkles :size="12" />AI 생성
                   </button>
-                  <template v-if="pdfNotes.has(cellKey(act.id, student.id))">
-                    <span class="history-sep">|</span>
-                    <span class="btn-pdf-note" :title="pdfNotes.get(cellKey(act.id, student.id)).summary">
-                      <FileText :size="11" class="pdf-note-icon"/>
-                      {{ pdfNotes.get(cellKey(act.id, student.id)).fileName }}
-                    </span>
-                    <button class="btn-pdf-del" @click.stop="deletePdfNote(act.id, student.id)" title="PDF 분석 삭제">
-                      <Trash2 :size="11"/>
-                    </button>
-                  </template>
-                  <template v-else>
-                    <span class="history-sep">|</span>
-                    <button
-                      class="btn-pdf"
-                      :disabled="pdfAnalyzing.has(cellKey(act.id, student.id))"
-                      @click.stop="openPdfForCell(act, student)"
-                      title="PDF 파일을 AI로 분석하여 생성 참고자료로 활용"
-                    >
-                      <FileText :size="11"/>
-                      {{ pdfAnalyzing.has(cellKey(act.id, student.id)) ? '분석 중...' : 'PDF 분석' }}
-                    </button>
-                  </template>
+                  <span class="history-sep">|</span>
+                  <span
+                      v-if="cellPdfNotes(act.id, student.id).length"
+                      class="btn-pdf-note"
+                      :title="cellPdfNotes(act.id, student.id).map(n => `${n.enabled ? '✓' : '✗'} ${n.fileName}`).join('\n')"
+                  >
+                    <FileText :size="11" class="pdf-note-icon"/>
+                    PDF {{ cellPdfNotes(act.id, student.id).filter(n => n.enabled).length }}/{{ cellPdfNotes(act.id, student.id).length }}
+                  </span>
+                  <button
+                    class="btn-pdf"
+                    :disabled="pdfAnalyzing.has(cellKey(act.id, student.id))"
+                    @click.stop="openPdfForCell(act, student)"
+                    title="PDF 파일을 AI로 분석하여 생성 참고자료로 활용 (파일별 관리는 '학생 활동 PDF 분석'에서)"
+                  >
+                    <FileText :size="11"/>
+                    {{ pdfAnalyzing.has(cellKey(act.id, student.id)) ? '분석 중...' : (cellPdfNotes(act.id, student.id).length ? '추가' : 'PDF 분석') }}
+                  </button>
                 </div>
               </template>
             </td>
@@ -812,6 +823,16 @@ function isNewGroup(students, index) {
           @saved="handleBehaviorSaved"
       />
     </transition>
+
+    <!-- 학생 활동 PDF 일괄 분석 모달 -->
+    <CellPdfBatchModal
+        v-if="pdfBatchVisible && recordStore.gridData"
+        :activities="recordStore.gridData.activities"
+        :students="recordStore.gridData.students"
+        :pdf-notes="pdfNotes"
+        @close="pdfBatchVisible = false"
+        @changed="onPdfNotesChanged"
+    />
 
     <!-- 학생 전체 미리보기 모달 -->
     <StudentFullPreviewModal

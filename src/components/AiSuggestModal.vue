@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Sparkles, RefreshCw, Check, Eye, EyeOff, Brain } from 'lucide-vue-next'
+import { Sparkles, RefreshCw, Check, Eye, EyeOff, Brain, FileText } from 'lucide-vue-next'
 import { useAiStore, AI_MODELS, DEFAULT_MODEL } from '../stores/ai'
 import BaseModal from './BaseModal.vue'
 
@@ -36,6 +36,11 @@ const selectedModelLabel = ref('')
 // 행동 프로필 포함 여부
 const includeBehavior = ref(true)
 
+// PDF 분석 자료 포함 여부
+const includePdf = ref(true)
+// 이 셀의 PDF 분석 노트 목록
+const pdfNotesList = ref([])
+
 // 행동 프로필 체크 요약 (ON일 때 뱃지로 표시)
 const behaviorSummary = computed(() => {
   const b = props.studentBehavior
@@ -56,6 +61,11 @@ onMounted(async () => {
 
   const key = await aiStore.getApiKey()
   step.value = key ? 'form' : 'api-key'
+
+  // 이 셀의 PDF 분석 노트 목록 조회
+  try {
+    pdfNotesList.value = await aiStore.getCellPdfNotes(props.activityId, props.studentId)
+  } catch { pdfNotesList.value = [] }
 })
 
 async function saveApiKey() {
@@ -160,6 +170,7 @@ async function generate() {
       areaId:         props.areaId,
       activityId:     props.activityId,
       studentId:      props.studentId,
+      includePdf:     includePdf.value,
       requirements:   buildRequirements(),
     })
     result.value           = res.text
@@ -236,7 +247,7 @@ function byteLength(str) {
         </div>
 
         <!-- 행동 프로필 패널 -->
-        <div class="ref-panel" :class="includeBehavior && hasBehavior ? 'ref-panel--on' : ''">
+        <div class="ref-panel" :class="includeBehavior ? 'ref-panel--on' : ''">
           <div class="ref-panel-header">
             <div class="ref-panel-left">
               <Brain :size="15" class="ref-panel-icon"/>
@@ -262,6 +273,40 @@ function byteLength(str) {
           </p>
           <p v-else class="ref-panel-hint-on">
             학생의 행동 프로필이 AI 생성에 반영됩니다.
+          </p>
+        </div>
+
+        <!-- PDF 분석 자료 패널 -->
+        <div class="ref-panel" :class="includePdf ? 'ref-panel--on' : ''">
+          <div class="ref-panel-header">
+            <div class="ref-panel-left">
+              <FileText :size="15" class="ref-panel-icon"/>
+              <span class="ref-panel-title">PDF 분석 자료 참고</span>
+              <span
+                  v-if="includePdf && pdfNotesList.length"
+                  class="ref-badge"
+                  :title="pdfNotesList.map(n => `${n.enabled ? '✓' : '✗'} ${n.file_name}`).join('\n')"
+              >
+                {{ pdfNotesList.filter(n => n.enabled).length }}개 파일
+              </span>
+            </div>
+            <button
+                class="ref-switch"
+                :class="includePdf ? 'ref-switch--on' : ''"
+                @click="includePdf = !includePdf"
+            >
+              <span class="ref-switch-thumb"/>
+              <span class="ref-switch-label">{{ includePdf ? 'ON' : 'OFF' }}</span>
+            </button>
+          </div>
+          <p v-if="!pdfNotesList.length" class="ref-panel-hint-off">
+            이 셀에 분석된 PDF가 없습니다. 셀의 PDF 분석 버튼 또는 학생 활동 PDF 분석에서 업로드하세요.
+          </p>
+          <p v-else-if="!includePdf" class="ref-panel-hint-off">
+            ON으로 설정하면 PDF 분석 내용이 AI에 전달됩니다.
+          </p>
+          <p v-else class="ref-panel-hint-on">
+            PDF 분석 내용({{ pdfNotesList.filter(n => n.enabled).length }}개 파일)이 AI 생성에 반영됩니다.
           </p>
         </div>
       </div>

@@ -140,7 +140,9 @@ fn main() {
             test_stored_api_key,
             sync_openrouter_models,
             analyze_cell_pdf,
-            get_cell_pdf_note,
+            get_cell_pdf_notes,
+            get_area_pdf_notes,
+            set_cell_pdf_note_enabled,
             delete_cell_pdf_note,
             // AI 대화
             ai_chat,

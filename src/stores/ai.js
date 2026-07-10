@@ -264,7 +264,7 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   // { text, model, prompt_tokens, completion_tokens, total_tokens } 반환
-  async function generateRecord({ studentName, areaName, activityName, currentContent, byteLimit, areaId, activityId, studentId, requirements }) {
+  async function generateRecord({ studentName, areaName, activityName, currentContent, byteLimit, areaId, activityId, studentId, includePdf, requirements }) {
     return await invoke('ai_generate_record', {
       studentName,
       areaName,
@@ -274,20 +274,30 @@ export const useAiStore = defineStore('ai', () => {
       areaId: areaId ?? 0,
       activityId: activityId ?? 0,
       studentId: studentId ?? 0,
+      includePdf: includePdf ?? true,
       requirements: requirements ?? null,
     })
   }
 
-  async function analyzeCellPdf(activityId, studentId, filePath) {
-    return await invoke('analyze_cell_pdf', { activityId, studentId, filePath })
+  // 파일당 1행씩 분석 결과 저장 — 저장된 노트 배열 반환
+  async function analyzeCellPdf(activityId, studentId, filePaths) {
+    return await invoke('analyze_cell_pdf', { activityId, studentId, filePaths })
   }
 
-  async function getCellPdfNote(activityId, studentId) {
-    return await invoke('get_cell_pdf_note', { activityId, studentId })
+  async function getCellPdfNotes(activityId, studentId) {
+    return await invoke('get_cell_pdf_notes', { activityId, studentId })
   }
 
-  async function deleteCellPdfNote(activityId, studentId) {
-    await invoke('delete_cell_pdf_note', { activityId, studentId })
+  async function getAreaPdfNotes(areaId) {
+    return await invoke('get_area_pdf_notes', { areaId })
+  }
+
+  async function setCellPdfNoteEnabled(noteId, enabled) {
+    await invoke('set_cell_pdf_note_enabled', { noteId, enabled })
+  }
+
+  async function deleteCellPdfNote(noteId) {
+    await invoke('delete_cell_pdf_note', { noteId })
   }
 
   async function testApiKey(apiKey) {
@@ -323,6 +333,6 @@ export const useAiStore = defineStore('ai', () => {
     getRefSettings, setRefSettings,
     generateRecord, testApiKey, testStoredApiKey, diagnoseApiKey,
     syncModels, getSyncedModels, getSyncedModelsAt,
-    analyzeCellPdf, getCellPdfNote, deleteCellPdfNote,
+    analyzeCellPdf, getCellPdfNotes, getAreaPdfNotes, setCellPdfNoteEnabled, deleteCellPdfNote,
   }
 })

@@ -6,7 +6,7 @@ use std::path::Path;
 /// 스키마 변경 시 이 값을 올리고 MIGRATIONS 배열에 SQL을 추가한다.
 /// 중요: 스키마 버전을 올릴 때는 반드시 Cargo.toml의 version(app_version)도 함께 올려야 한다.
 /// app_version이 바뀌지 않으면 릴리즈 노트 모달이 표시되지 않는다.
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// 인덱스 i: 버전 i → i+1 로 올리는 SQL.
 /// [0] v0→v1: 버전 도입 이전 DB를 v1으로 승격. 스키마는 IF NOT EXISTS로 생성되어 있으므로 SQL 없음.
@@ -80,6 +80,24 @@ const MIGRATIONS: &[&str] = &[
          FOREIGN KEY (activity_id) REFERENCES Activity(id) ON DELETE CASCADE,
          FOREIGN KEY (student_id)  REFERENCES Student(id)  ON DELETE CASCADE
      );",
+    // v10 → v11: CellPdfNote를 파일당 1행 구조로 변경 (복합 PK → id PK)
+    "CREATE TABLE CellPdfNote_new (
+         id          INTEGER PRIMARY KEY AUTOINCREMENT,
+         activity_id INTEGER NOT NULL,
+         student_id  INTEGER NOT NULL,
+         file_name   TEXT,
+         ai_summary  TEXT    NOT NULL DEFAULT '',
+         updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+         FOREIGN KEY (activity_id) REFERENCES Activity(id) ON DELETE CASCADE,
+         FOREIGN KEY (student_id)  REFERENCES Student(id)  ON DELETE CASCADE
+     );
+     INSERT INTO CellPdfNote_new (activity_id, student_id, file_name, ai_summary, updated_at)
+         SELECT activity_id, student_id, file_name, ai_summary, updated_at FROM CellPdfNote;
+     DROP TABLE CellPdfNote;
+     ALTER TABLE CellPdfNote_new RENAME TO CellPdfNote;
+     CREATE INDEX IF NOT EXISTS idx_cell_pdf_note_cell ON CellPdfNote (activity_id, student_id);",
+    // v11 → v12: CellPdfNote에 enabled 컬럼 추가 (AI 생성 사용 여부 체크박스)
+    "ALTER TABLE CellPdfNote ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;",
 ];
 
 // ── 내부 헬퍼 ────────────────────────────────────────────────

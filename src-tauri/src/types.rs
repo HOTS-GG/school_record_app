@@ -236,9 +236,11 @@ pub struct InspectRecord {
 
 #[derive(Serialize)]
 pub struct CellPdfNote {
+    pub id: i64,
     pub activity_id: i64,
     pub student_id: i64,
     pub file_name: Option<String>,
     pub ai_summary: String,
+    pub enabled: bool,
     pub updated_at: String,
 }
