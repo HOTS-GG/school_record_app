@@ -1174,6 +1174,14 @@ thead .sticky {
   background-color: var(--clr-red-cell-bg) !important;
 }
 
+/* sticky 고정 열은 불투명 바탕 위에 빨간 틴트를 얹어야
+   가로 스크롤 시 뒤쪽 셀 내용이 비쳐 보이지 않음 */
+.td-fixed.td-row--over,
+.td-fixed.td-total--over {
+  background-color: var(--bg-0) !important;
+  background-image: linear-gradient(var(--clr-red-cell-bg), var(--clr-red-cell-bg));
+}
+
 .total-bytes {
   font-size: 12px;
   color: var(--tx-2);
