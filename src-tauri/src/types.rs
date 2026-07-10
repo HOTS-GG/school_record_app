@@ -231,3 +231,14 @@ pub struct InspectRecord {
     pub number: i64,
     pub content: String,
 }
+
+// ── PDF 분석 메모 ─────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct CellPdfNote {
+    pub activity_id: i64,
+    pub student_id: i64,
+    pub file_name: Option<String>,
+    pub ai_summary: String,
+    pub updated_at: String,
+}

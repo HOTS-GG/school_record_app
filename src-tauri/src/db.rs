@@ -6,7 +6,7 @@ use std::path::Path;
 /// 스키마 변경 시 이 값을 올리고 MIGRATIONS 배열에 SQL을 추가한다.
 /// 중요: 스키마 버전을 올릴 때는 반드시 Cargo.toml의 version(app_version)도 함께 올려야 한다.
 /// app_version이 바뀌지 않으면 릴리즈 노트 모달이 표시되지 않는다.
-pub const SCHEMA_VERSION: u32 = 9;
+pub const SCHEMA_VERSION: u32 = 10;
 
 /// 인덱스 i: 버전 i → i+1 로 올리는 SQL.
 /// [0] v0→v1: 버전 도입 이전 DB를 v1으로 승격. 스키마는 IF NOT EXISTS로 생성되어 있으므로 SQL 없음.
@@ -69,6 +69,17 @@ const MIGRATIONS: &[&str] = &[
     // v8 → v9: Activity에 prompt/date_info 컬럼 추가 (활동별 AI 프롬프트 및 날짜/내용 메모)
     "ALTER TABLE Activity ADD COLUMN prompt TEXT;
      ALTER TABLE Activity ADD COLUMN date_info TEXT;",
+    // v9 → v10: 셀 단위 PDF 분석 메모 테이블 추가
+    "CREATE TABLE IF NOT EXISTS CellPdfNote (
+         activity_id INTEGER NOT NULL,
+         student_id  INTEGER NOT NULL,
+         file_name   TEXT,
+         ai_summary  TEXT    NOT NULL DEFAULT '',
+         updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+         PRIMARY KEY (activity_id, student_id),
+         FOREIGN KEY (activity_id) REFERENCES Activity(id) ON DELETE CASCADE,
+         FOREIGN KEY (student_id)  REFERENCES Student(id)  ON DELETE CASCADE
+     );",
 ];
 
 // ── 내부 헬퍼 ────────────────────────────────────────────────

@@ -139,6 +139,9 @@ fn main() {
             test_api_key,
             test_stored_api_key,
             sync_openrouter_models,
+            analyze_cell_pdf,
+            get_cell_pdf_note,
+            delete_cell_pdf_note,
             // AI 대화
             ai_chat,
             create_chat_session,

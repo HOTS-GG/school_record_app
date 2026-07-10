@@ -1,10 +1,12 @@
 ﻿<script setup>
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {ALargeSmall, ArrowLeftRight, Brain, Clipboard, CircleAlert, Eye, Minimize2, Sparkles, TableProperties} from 'lucide-vue-next'
+import {ALargeSmall, ArrowLeftRight, Brain, Clipboard, CircleAlert, Eye, FileText, Minimize2, Sparkles, TableProperties, Trash2} from 'lucide-vue-next'
+import {open as openDialog} from '@tauri-apps/plugin-dialog'
 import {useAreaStore} from '../stores/area'
 import {useRecordStore} from '../stores/record'
 import {useConfigStore} from '../stores/configStore'
 import {useStudentStore} from '../stores/student'
+import {useAiStore} from '../stores/ai'
 import CellHistoryModal from '../components/CellHistoryModal.vue'
 import AiSuggestModal from '../components/AiSuggestModal.vue'
 import StudentBehaviorModal from '../components/StudentBehaviorModal.vue'
@@ -15,6 +17,7 @@ const areaStore = useAreaStore()
 const recordStore = useRecordStore()
 const configStore = useConfigStore()
 const studentStore = useStudentStore()
+const aiStore = useAiStore()
 
 const selectedAreaId = ref(null)
 const loadError = ref('')
@@ -24,6 +27,11 @@ const collapsedActivities = ref(new Set())
 
 // 학생 정보 열 너비 (px) — 드래그로 리사이즈
 const colWidths = ref({grade: 48, cls: 48, number: 48, name: 100, total: 110})
+
+// 펼쳐진 활동 수 (1~2개: 꽉채움, 3개+: 가로스크롤)
+const visibleActivityCount = computed(() =>
+  (recordStore.gridData?.activities ?? []).filter(a => !collapsedActivities.value.has(a.id)).length
+)
 
 // sticky left 위치 (열 너비로부터 계산)
 const leftPos = computed(() => {
@@ -343,6 +351,58 @@ function cancelPasteMode() {
   pasteSource.value = null
 }
 
+// PDF 분석
+// cellKey → { summary, fileName } | null
+const pdfNotes = ref(new Map())
+// PDF 분석 진행 중인 셀 키 집합
+const pdfAnalyzing = ref(new Set())
+
+async function loadPdfNote(activityId, studentId) {
+  const note = await aiStore.getCellPdfNote(activityId, studentId)
+  const key = cellKey(activityId, studentId)
+  const next = new Map(pdfNotes.value)
+  if (note) {
+    next.set(key, { summary: note.ai_summary, fileName: note.file_name })
+  } else {
+    next.delete(key)
+  }
+  pdfNotes.value = next
+}
+
+async function openPdfForCell(act, student) {
+  const selected = await openDialog({
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    multiple: false,
+  })
+  if (!selected) return
+
+  const key = cellKey(act.id, student.id)
+  const next = new Set(pdfAnalyzing.value)
+  next.add(key)
+  pdfAnalyzing.value = next
+
+  try {
+    const summary = await aiStore.analyzeCellPdf(act.id, student.id, selected)
+    const noteMap = new Map(pdfNotes.value)
+    noteMap.set(key, { summary, fileName: selected.split(/[\\/]/).pop() })
+    pdfNotes.value = noteMap
+  } catch (e) {
+    alert(`PDF 분석 실패: ${e}`)
+  } finally {
+    const s = new Set(pdfAnalyzing.value)
+    s.delete(key)
+    pdfAnalyzing.value = s
+  }
+}
+
+async function deletePdfNote(activityId, studentId) {
+  await aiStore.deleteCellPdfNote(activityId, studentId)
+  const key = cellKey(activityId, studentId)
+  const next = new Map(pdfNotes.value)
+  next.delete(key)
+  pdfNotes.value = next
+}
+
 // 미작성 학생만 보기 필터
 const filterEmptyOnly = ref(false)
 
@@ -546,7 +606,7 @@ function isNewGroup(students, index) {
 
       <!-- 그리드 -->
       <div v-else class="grid-wrapper" @wheel="onGridWheel">
-        <table class="grid-table">
+        <table :class="['grid-table', visibleActivityCount <= 2 ? 'grid-table--fit' : '']">
           <!-- colgroup: 모든 열 너비를 한 곳에서 정의 → th/td 개별 width 불필요 -->
           <colgroup>
             <col :style="{ width: colWidths.grade + 'px' }">
@@ -557,7 +617,7 @@ function isNewGroup(students, index) {
             <col
                 v-for="act in recordStore.gridData.activities"
                 :key="act.id"
-                :style="collapsedActivities.has(act.id) ? { width: '80px' } : { width: '480px' }"
+                :style="collapsedActivities.has(act.id) ? { width: '80px' } : (visibleActivityCount <= 2 ? {} : { width: '480px' })"
             >
           </colgroup>
           <thead>
@@ -684,6 +744,28 @@ function isNewGroup(students, index) {
                   <button class="btn-ai-gen" @click.stop="openAiModal(act, student)" title="AI로 문구 생성">
                     <Sparkles :size="12" />AI 생성
                   </button>
+                  <template v-if="pdfNotes.has(cellKey(act.id, student.id))">
+                    <span class="history-sep">|</span>
+                    <span class="btn-pdf-note" :title="pdfNotes.get(cellKey(act.id, student.id)).summary">
+                      <FileText :size="11" class="pdf-note-icon"/>
+                      {{ pdfNotes.get(cellKey(act.id, student.id)).fileName }}
+                    </span>
+                    <button class="btn-pdf-del" @click.stop="deletePdfNote(act.id, student.id)" title="PDF 분석 삭제">
+                      <Trash2 :size="11"/>
+                    </button>
+                  </template>
+                  <template v-else>
+                    <span class="history-sep">|</span>
+                    <button
+                      class="btn-pdf"
+                      :disabled="pdfAnalyzing.has(cellKey(act.id, student.id))"
+                      @click.stop="openPdfForCell(act, student)"
+                      title="PDF 파일을 AI로 분석하여 생성 참고자료로 활용"
+                    >
+                      <FileText :size="11"/>
+                      {{ pdfAnalyzing.has(cellKey(act.id, student.id)) ? '분석 중...' : 'PDF 분석' }}
+                    </button>
+                  </template>
                 </div>
               </template>
             </td>
@@ -921,6 +1003,10 @@ function isNewGroup(students, index) {
   border-spacing: 0;
   width: max-content;
   table-layout: fixed;
+}
+
+.grid-table--fit {
+  width: 100%;
 }
 
 /* 헤더 항상 sticky — tr이 아닌 th에 직접 적용 (브라우저 호환성 ↑) */
@@ -1206,6 +1292,65 @@ thead .sticky {
   background: rgba(var(--accent-rgb), 0.25);
   border-color: rgba(var(--accent-rgb), 0.7);
   color: var(--accent-bright);
+}
+
+/* PDF 분석 버튼 */
+.btn-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid rgba(220, 100, 0, 0.4);
+  background: rgba(220, 100, 0, 0.08);
+  color: rgb(180, 80, 0);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.btn-pdf:hover:not(:disabled) {
+  background: rgba(220, 100, 0, 0.18);
+}
+.btn-pdf:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* PDF 노트 표시 */
+.btn-pdf-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 20px;
+  background: rgba(220, 100, 0, 0.12);
+  color: rgb(150, 60, 0);
+  font-size: 11px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+.pdf-note-icon {
+  flex-shrink: 0;
+}
+.btn-pdf-del {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: none;
+  background: none;
+  color: var(--tx-4);
+  cursor: pointer;
+  font-size: 11px;
+  transition: color 0.12s;
+}
+.btn-pdf-del:hover {
+  color: var(--clr-danger, #e03);
 }
 
 /* 붙여넣기 버튼 */

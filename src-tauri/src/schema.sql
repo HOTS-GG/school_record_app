@@ -208,3 +208,18 @@ CREATE TABLE IF NOT EXISTS OcrResult (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ocr_result_session ON OcrResult (session_id);
+
+-- ================================================================
+-- 셀 단위 PDF 분석 메모 (activity × student)
+-- ================================================================
+
+CREATE TABLE IF NOT EXISTS CellPdfNote (
+    activity_id INTEGER NOT NULL,
+    student_id  INTEGER NOT NULL,
+    file_name   TEXT,
+    ai_summary  TEXT    NOT NULL DEFAULT '',
+    updated_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (activity_id, student_id),
+    FOREIGN KEY (activity_id) REFERENCES Activity(id)  ON DELETE CASCADE,
+    FOREIGN KEY (student_id)  REFERENCES Student(id)   ON DELETE CASCADE
+);

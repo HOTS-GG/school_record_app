@@ -1,4 +1,6 @@
 use crate::state::{DbState, GlobalConfigState};
+use crate::types::CellPdfNote;
+use base64::Engine;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use tauri::State;
@@ -78,6 +80,7 @@ pub async fn ai_generate_record(
     byte_limit: Option<i64>,
     area_id: i64,
     activity_id: i64,
+    student_id: i64,
     requirements: Option<String>,
     state: State<'_, DbState>,
     global: State<'_, GlobalConfigState>,
@@ -99,7 +102,7 @@ pub async fn ai_generate_record(
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
-        let (area_prompt, activity_prompt, activity_date_info): (Option<String>, Option<String>, Option<String>) = {
+        let (area_prompt, activity_prompt, activity_date_info, pdf_summary): (Option<String>, Option<String>, Option<String>, Option<String>) = {
             let guard = state.0.lock().unwrap();
             if let Some(conn) = guard.as_ref() {
                 let ap = if area_id > 0 {
@@ -118,9 +121,19 @@ pub async fn ai_generate_record(
                     ).optional().map_err(|e| e.to_string())?.unwrap_or((None, None))
                 } else { (None, None) };
 
-                (ap, actp, actd)
+                let pdf = if activity_id > 0 && student_id > 0 {
+                    conn.query_row(
+                        "SELECT ai_summary FROM CellPdfNote WHERE activity_id = ?1 AND student_id = ?2",
+                        rusqlite::params![activity_id, student_id],
+                        |row| row.get::<_, Option<String>>(0),
+                    ).optional().map_err(|e| e.to_string())?
+                    .flatten()
+                    .filter(|s| !s.trim().is_empty())
+                } else { None };
+
+                (ap, actp, actd, pdf)
             } else {
-                (None, None, None)
+                (None, None, None, None)
             }
         };
 
@@ -134,6 +147,9 @@ pub async fn ai_generate_record(
         }
         if let Some(d) = activity_date_info.filter(|s| !s.trim().is_empty()) {
             layers.push(format!("[활동 내용/일정 메모]\n{d}"));
+        }
+        if let Some(s) = pdf_summary.filter(|s| !s.trim().is_empty()) {
+            layers.push(format!("[학생 PDF 분석 자료]\n{s}"));
         }
         let system_prompt = layers.join("\n\n");
 
@@ -376,4 +392,141 @@ async fn call_openrouter_auth(key: String) -> Result<String, String> {
         let prefix = &key[..key.len().min(12)];
         Err(format!("✗ 인증 실패 ({status}) | 키: {}... (길이: {})\n응답: {}", prefix, key.len(), text))
     }
+}
+
+// ── PDF 분석 커맨드 ───────────────────────────────────────────
+
+/// PDF 파일을 AI로 분석하고 결과를 DB에 저장
+#[tauri::command]
+pub async fn analyze_cell_pdf(
+    activity_id: i64,
+    student_id: i64,
+    file_path: String,
+    state: State<'_, DbState>,
+    global: State<'_, GlobalConfigState>,
+) -> Result<String, String> {
+    let (api_key, model) = {
+        let gcfg = global.0.lock().unwrap();
+        let key = read_global_str(&gcfg, "claude_api_key")?
+            .map(|s| s.chars().filter(|c| !c.is_whitespace()).collect::<String>())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "API 키가 설정되지 않았습니다.".to_string())?;
+        let m = read_global_str(&gcfg, "ai_model")?
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+        (key, m)
+    };
+
+    let file_name = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("document.pdf")
+        .to_string();
+
+    let bytes = std::fs::read(&file_path)
+        .map_err(|e| format!("PDF 파일 읽기 실패: {e}"))?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "이 PDF 파일의 내용을 분석하여 학생의 활동 특성과 주요 내용을 요약해주세요. 주요 활동 내용, 성과, 특이사항을 포함하여 3~5문장으로 간결하게 한국어로 작성해주세요."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:application/pdf;base64,{b64}")
+                        }
+                    }
+                ]
+            }
+        ]
+    });
+
+    let resp = client
+        .post("https://openrouter.ai/api/v1/chat/completions")
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .header("HTTP-Referer", APP_REFERER)
+        .header("X-Title", APP_TITLE)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("API 요청 실패: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("API 오류 {status}: {text}"));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let summary = json["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| "응답 파싱 실패".to_string())?
+        .trim()
+        .to_string();
+
+    {
+        let guard = state.0.lock().unwrap();
+        let conn = guard.as_ref().ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+        conn.execute(
+            "INSERT INTO CellPdfNote (activity_id, student_id, file_name, ai_summary, updated_at)
+             VALUES (?1, ?2, ?3, ?4, datetime('now'))
+             ON CONFLICT(activity_id, student_id) DO UPDATE SET
+               file_name  = excluded.file_name,
+               ai_summary = excluded.ai_summary,
+               updated_at = excluded.updated_at",
+            rusqlite::params![activity_id, student_id, file_name, summary],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    Ok(summary)
+}
+
+/// 셀의 PDF 분석 메모 조회
+#[tauri::command]
+pub fn get_cell_pdf_note(
+    activity_id: i64,
+    student_id: i64,
+    state: State<'_, DbState>,
+) -> Result<Option<CellPdfNote>, String> {
+    let guard = state.0.lock().unwrap();
+    let conn = guard.as_ref().ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+    conn.query_row(
+        "SELECT activity_id, student_id, file_name, ai_summary, updated_at
+         FROM CellPdfNote WHERE activity_id = ?1 AND student_id = ?2",
+        rusqlite::params![activity_id, student_id],
+        |row| Ok(CellPdfNote {
+            activity_id: row.get(0)?,
+            student_id:  row.get(1)?,
+            file_name:   row.get(2)?,
+            ai_summary:  row.get(3)?,
+            updated_at:  row.get(4)?,
+        }),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// 셀의 PDF 분석 메모 삭제
+#[tauri::command]
+pub fn delete_cell_pdf_note(
+    activity_id: i64,
+    student_id: i64,
+    state: State<'_, DbState>,
+) -> Result<(), String> {
+    let guard = state.0.lock().unwrap();
+    let conn = guard.as_ref().ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
+    conn.execute(
+        "DELETE FROM CellPdfNote WHERE activity_id = ?1 AND student_id = ?2",
+        rusqlite::params![activity_id, student_id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }

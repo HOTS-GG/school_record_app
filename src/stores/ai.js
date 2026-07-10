@@ -134,7 +134,7 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   // { text, model, prompt_tokens, completion_tokens, total_tokens } 반환
-  async function generateRecord({ studentName, areaName, activityName, currentContent, byteLimit, areaId, activityId, requirements }) {
+  async function generateRecord({ studentName, areaName, activityName, currentContent, byteLimit, areaId, activityId, studentId, requirements }) {
     return await invoke('ai_generate_record', {
       studentName,
       areaName,
@@ -143,8 +143,21 @@ export const useAiStore = defineStore('ai', () => {
       byteLimit: byteLimit ?? null,
       areaId: areaId ?? 0,
       activityId: activityId ?? 0,
+      studentId: studentId ?? 0,
       requirements: requirements ?? null,
     })
+  }
+
+  async function analyzeCellPdf(activityId, studentId, filePath) {
+    return await invoke('analyze_cell_pdf', { activityId, studentId, filePath })
+  }
+
+  async function getCellPdfNote(activityId, studentId) {
+    return await invoke('get_cell_pdf_note', { activityId, studentId })
+  }
+
+  async function deleteCellPdfNote(activityId, studentId) {
+    await invoke('delete_cell_pdf_note', { activityId, studentId })
   }
 
   async function testApiKey(apiKey) {
@@ -180,5 +193,6 @@ export const useAiStore = defineStore('ai', () => {
     getRefSettings, setRefSettings,
     generateRecord, testApiKey, testStoredApiKey, diagnoseApiKey,
     syncModels, getSyncedModels, getSyncedModelsAt,
+    analyzeCellPdf, getCellPdfNote, deleteCellPdfNote,
   }
 })

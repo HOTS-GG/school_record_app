@@ -159,6 +159,7 @@ async function generate() {
       byteLimit:      props.byteLimit,
       areaId:         props.areaId,
       activityId:     props.activityId,
+      studentId:      props.studentId,
       requirements:   buildRequirements(),
     })
     result.value           = res.text
