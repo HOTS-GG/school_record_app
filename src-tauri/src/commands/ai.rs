@@ -191,8 +191,13 @@ pub fn diagnose_api_key(global: State<'_, GlobalConfigState>) -> Result<KeyDiagn
         return Ok(KeyDiagnostic { stored: false, length: 0, prefix: String::new(), suffix: String::new() });
     }
 
-    let prefix = if raw.len() >= 8 { raw[..8].to_string() } else { raw.clone() };
-    let suffix = if raw.len() >= 4 { raw[raw.len()-4..].to_string() } else { raw.clone() };
+    // 문자 단위로 잘라야 함 — 바이트 슬라이싱은 한글 등 멀티바이트 문자에서 panic → 앱 강제 종료
+    let prefix: String = raw.chars().take(8).collect();
+    let suffix: String = {
+        let chars: Vec<char> = raw.chars().collect();
+        let start = chars.len().saturating_sub(4);
+        chars[start..].iter().collect()
+    };
 
     Ok(KeyDiagnostic {
         stored: true,
@@ -519,22 +524,23 @@ async fn call_openrouter_auth(key: String) -> Result<String, String> {
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
 
+    // 문자 단위로 잘라야 함 — 바이트 슬라이싱은 멀티바이트 문자에서 panic → 앱 강제 종료
+    let prefix: String = key.chars().take(12).collect();
+
     if status.is_success() {
         let info = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
             let limit = json["data"]["limit"].as_f64();
             let usage = json["data"]["usage"].as_f64().unwrap_or(0.0);
             let is_free = json["data"]["is_free_tier"].as_bool().unwrap_or(false);
-            let prefix = &key[..key.len().min(12)];
             match limit {
                 Some(l) => format!("✓ 연결 성공 (키: {}...) | 사용: ${:.4} / ${:.2}{}", prefix, usage, l, if is_free { " [무료]" } else { "" }),
                 None    => format!("✓ 연결 성공 (키: {}...) | 사용: ${:.4}{}", prefix, usage, if is_free { " [무료 티어]" } else { "" }),
             }
         } else {
-            format!("✓ 연결 성공 (키: {}...)", &key[..key.len().min(12)])
+            format!("✓ 연결 성공 (키: {}...)", prefix)
         };
         Ok(info)
     } else {
-        let prefix = &key[..key.len().min(12)];
         Err(format!("✗ 인증 실패 ({status}) | 키: {}... (길이: {})\n응답: {}", prefix, key.len(), text))
     }
 }
