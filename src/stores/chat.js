@@ -69,19 +69,8 @@ export const useChatStore = defineStore('chat', () => {
     const session = getActiveSession()
     const model = session?.model || null
 
-    // 1. 사용자 메시지를 DB에 저장
-    await invoke('save_chat_message', {
-      sessionId: activeSessionId.value,
-      role: 'user',
-      content: userText,
-      model: null,
-      promptTokens: 0,
-      completionTokens: 0,
-      totalTokens: 0,
-    })
-
-    // 2. 로컬 메시지 목록에 즉시 추가
-    messages.value.push({
+    // 1. 로컬 메시지 목록에 즉시 추가 (화면 표시용 — DB 저장은 AI 응답 성공 후)
+    const localUserMsg = {
       id: Date.now(),
       session_id: activeSessionId.value,
       role: 'user',
@@ -91,18 +80,38 @@ export const useChatStore = defineStore('chat', () => {
       completion_tokens: 0,
       total_tokens: 0,
       created_at: new Date().toISOString(),
-    })
+    }
+    messages.value.push(localUserMsg)
 
-    // 3. 대화 히스토리 구성 (system 메시지 제외)
+    // 2. 대화 히스토리 구성 (system 제외, 최근 30개만 — 토큰 비용·컨텍스트 초과 방지)
+    const HISTORY_LIMIT = 30
     const history = messages.value
       .filter((m) => m.role !== 'system')
+      .slice(-HISTORY_LIMIT)
       .map((m) => ({ role: m.role, content: m.content }))
 
-    // 4. AI 호출
-    const result = await invoke('ai_chat', {
-      messages: history,
-      systemPrompt: null,
-      model,
+    // 3. AI 호출 — 실패 시 로컬 사용자 메시지를 되돌리고 DB에는 아무것도 남기지 않음
+    let result
+    try {
+      result = await invoke('ai_chat', {
+        messages: history,
+        systemPrompt: null,
+        model,
+      })
+    } catch (e) {
+      messages.value = messages.value.filter((m) => m !== localUserMsg)
+      throw e
+    }
+
+    // 4. 성공 — 사용자 메시지를 DB에 저장
+    await invoke('save_chat_message', {
+      sessionId: activeSessionId.value,
+      role: 'user',
+      content: userText,
+      model: null,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
     })
 
     // 5. AI 메시지를 DB에 저장

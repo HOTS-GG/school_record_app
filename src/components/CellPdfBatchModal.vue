@@ -16,9 +16,15 @@ const emit = defineEmits(['close', 'changed']) // changed: 부모가 영역 노�
 const aiStore = useAiStore()
 
 const selectedActivityId = ref(props.activities[0]?.id ?? null)
-// 분석 중인 studentId 집합
-const analyzing = ref(new Set())
+// 분석 중인 studentId → { done, total }
+const analyzing = ref(new Map())
 const errorMsg = ref('')
+
+function progressLabel(studentId) {
+  const p = analyzing.value.get(studentId)
+  if (!p) return ''
+  return p.total > 1 ? `분석 중... (${p.done}/${p.total})` : '분석 중...'
+}
 
 function cellKey(activityId, studentId) {
   return `${activityId}-${studentId}`
@@ -45,20 +51,27 @@ async function pickAndAnalyze(student) {
   if (!paths.length) return
 
   errorMsg.value = ''
-  const next = new Set(analyzing.value)
-  next.add(student.id)
-  analyzing.value = next
+  const setProgress = (done) => {
+    const m = new Map(analyzing.value)
+    m.set(student.id, { done, total: paths.length })
+    analyzing.value = m
+  }
+  setProgress(0)
 
   try {
-    await aiStore.analyzeCellPdf(selectedActivityId.value, student.id, paths)
-    emit('changed')
+    // 파일별 단건 호출 — 진행률 표시 및 파일마다 결과 즉시 반영
+    for (let i = 0; i < paths.length; i++) {
+      setProgress(i)
+      await aiStore.analyzeCellPdf(selectedActivityId.value, student.id, [paths[i]])
+      emit('changed')
+    }
   } catch (e) {
     errorMsg.value = `${student.name}: ${e}`
     emit('changed') // 일부 파일은 저장됐을 수 있으므로 재로드
   } finally {
-    const s = new Set(analyzing.value)
-    s.delete(student.id)
-    analyzing.value = s
+    const m = new Map(analyzing.value)
+    m.delete(student.id)
+    analyzing.value = m
   }
 }
 
@@ -115,7 +128,7 @@ async function toggleEnabled(note) {
                 @click="pickAndAnalyze(student)"
             >
               <Upload :size="13"/>
-              {{ analyzing.has(student.id) ? '분석 중...' : (notesOf(student.id).length ? 'PDF 추가' : 'PDF 선택') }}
+              {{ analyzing.has(student.id) ? progressLabel(student.id) : (notesOf(student.id).length ? 'PDF 추가' : 'PDF 선택') }}
             </button>
           </div>
 

@@ -252,6 +252,28 @@ export const useAiStore = defineStore('ai', () => {
     await invoke('delete_global_config', { key: 'ai_system_prompt' })
   }
 
+  // 기본 작성 바이트 수 (AI 생성 슬라이더 초기값)
+  async function getDefaultGenBytes() {
+    const v = await invoke('get_global_config', { key: 'default_gen_bytes' })
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  async function setDefaultGenBytes(value) {
+    await invoke('set_global_config', { key: 'default_gen_bytes', value: String(value) })
+  }
+
+  // 마지막 사용한 작성 바이트 수 (슬라이더 상태 기억)
+  async function getLastGenBytes() {
+    const v = await invoke('get_global_config', { key: 'last_gen_bytes' })
+    const n = parseInt(v, 10)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  async function setLastGenBytes(value) {
+    await invoke('set_global_config', { key: 'last_gen_bytes', value: String(value) })
+  }
+
   // 참고 자료 설정 (JSON 직렬화하여 저장)
   async function getRefSettings() {
     const json = await invoke('get_config', { key: 'ref_settings' })
@@ -331,6 +353,8 @@ export const useAiStore = defineStore('ai', () => {
     getModel, setModel,
     getSystemPrompt, setSystemPrompt, deleteSystemPrompt,
     getRefSettings, setRefSettings,
+    getDefaultGenBytes, setDefaultGenBytes,
+    getLastGenBytes, setLastGenBytes,
     generateRecord, testApiKey, testStoredApiKey, diagnoseApiKey,
     syncModels, getSyncedModels, getSyncedModelsAt,
     analyzeCellPdf, getCellPdfNotes, getAreaPdfNotes, setCellPdfNoteEnabled, deleteCellPdfNote,

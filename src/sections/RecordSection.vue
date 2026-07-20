@@ -356,8 +356,14 @@ function cancelPasteMode() {
 // PDF 분석
 // cellKey → [{id, summary, fileName}] (파일당 1건)
 const pdfNotes = ref(new Map())
-// PDF 분석 진행 중인 셀 키 집합
-const pdfAnalyzing = ref(new Set())
+// PDF 분석 진행 중인 셀 키 → { done, total }
+const pdfAnalyzing = ref(new Map())
+
+function pdfProgressLabel(key) {
+  const p = pdfAnalyzing.value.get(key)
+  if (!p) return ''
+  return p.total > 1 ? `분석 중 ${p.done}/${p.total}` : '분석 중...'
+}
 // 일괄 분석 모달
 const pdfBatchVisible = ref(false)
 
@@ -392,20 +398,27 @@ async function openPdfForCell(act, student) {
   if (!paths.length) return
 
   const key = cellKey(act.id, student.id)
-  const next = new Set(pdfAnalyzing.value)
-  next.add(key)
-  pdfAnalyzing.value = next
+  const setProgress = (done) => {
+    const m = new Map(pdfAnalyzing.value)
+    m.set(key, { done, total: paths.length })
+    pdfAnalyzing.value = m
+  }
+  setProgress(0)
 
   try {
-    await aiStore.analyzeCellPdf(act.id, student.id, paths)
-    await onPdfNotesChanged()
+    // 파일별 단건 호출 — 진행률 표시 및 파일마다 결과 즉시 반영
+    for (let i = 0; i < paths.length; i++) {
+      setProgress(i)
+      await aiStore.analyzeCellPdf(act.id, student.id, [paths[i]])
+      await onPdfNotesChanged()
+    }
   } catch (e) {
     alert(`PDF 분석 실패: ${e}`)
     await onPdfNotesChanged() // 일부 파일은 저장됐을 수 있음
   } finally {
-    const s = new Set(pdfAnalyzing.value)
-    s.delete(key)
-    pdfAnalyzing.value = s
+    const m = new Map(pdfAnalyzing.value)
+    m.delete(key)
+    pdfAnalyzing.value = m
   }
 }
 
@@ -775,7 +788,7 @@ function isNewGroup(students, index) {
                     title="PDF 파일을 AI로 분석하여 생성 참고자료로 활용 (파일별 관리는 '학생 활동 PDF 분석'에서)"
                   >
                     <FileText :size="11"/>
-                    {{ pdfAnalyzing.has(cellKey(act.id, student.id)) ? '분석 중...' : (cellPdfNotes(act.id, student.id).length ? '추가' : 'PDF 분석') }}
+                    {{ pdfAnalyzing.has(cellKey(act.id, student.id)) ? pdfProgressLabel(cellKey(act.id, student.id)) : (cellPdfNotes(act.id, student.id).length ? '추가' : 'PDF 분석') }}
                   </button>
                 </div>
               </template>

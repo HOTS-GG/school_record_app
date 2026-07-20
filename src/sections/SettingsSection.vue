@@ -30,6 +30,11 @@ const syncedCount    = ref(0)
 const syncedModels   = ref([]) // [] = 미동기화 or 빈 목록 | [{id,name}]
 const syncedOk       = ref(false)
 
+// ── 기본 작성 바이트 수 ────────────────────────────────
+const defaultGenBytes  = ref(500)
+const genBytesSaving   = ref(false)
+const genBytesSuccess  = ref('')
+
 // ── 역할 프롬프트 ──────────────────────────────────────
 const systemPrompt  = ref(DEFAULT_SYSTEM_PROMPT)
 const promptEditing = ref(false)
@@ -60,9 +65,24 @@ const previewStyle  = computed(() => {
 })
 
 onMounted(async () => {
-  await Promise.all([loadKey(), loadModel(), loadPrompt(), loadSyncedModels()])
+  await Promise.all([loadKey(), loadModel(), loadPrompt(), loadSyncedModels(), loadGenBytes()])
   pickerColor.value = themeStore.accentHex
 })
+
+// ── 기본 작성 바이트 수 함수 ──────────────────────────
+async function loadGenBytes() {
+  const v = await aiStore.getDefaultGenBytes()
+  if (v) defaultGenBytes.value = v
+}
+
+async function saveGenBytes() {
+  genBytesSaving.value = true
+  try {
+    await aiStore.setDefaultGenBytes(defaultGenBytes.value)
+    flash(genBytesSuccess, '기본 작성 바이트 수가 저장되었습니다.')
+  } catch { /* ignore */ }
+  finally { genBytesSaving.value = false }
+}
 
 // ── API 키 함수 ───────────────────────────────────────
 async function loadKey() {
@@ -341,6 +361,37 @@ function flash(target, msg) {
         <p v-if="modelSuccess" class="msg-success">{{ modelSuccess }}</p>
       </div>
 
+      <!-- ②-1 기본 작성 바이트 수 카드 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-title">기본 작성 바이트 수</span>
+            <span class="card-desc">AI 생성 창의 바이트 슬라이더 초기값입니다. 생성 시마다 창에서 조절할 수 있습니다.</span>
+          </div>
+        </div>
+
+        <div class="gen-bytes-row">
+          <input
+              type="range"
+              class="gen-bytes-slider"
+              v-model.number="defaultGenBytes"
+              min="100" max="2100" step="50"
+          />
+          <span class="gen-bytes-value">
+            {{ defaultGenBytes }} bytes
+            <span class="gen-bytes-chars">(한글 약 {{ Math.floor(defaultGenBytes / 3) }}자)</span>
+          </span>
+        </div>
+
+        <div class="card-actions">
+          <button class="btn-primary" @click="saveGenBytes" :disabled="genBytesSaving">
+            <Check :size="15"/> {{ genBytesSaving ? '저장 중...' : '저장' }}
+          </button>
+        </div>
+
+        <p v-if="genBytesSuccess" class="msg-success">{{ genBytesSuccess }}</p>
+      </div>
+
       <!-- ③ 역할 프롬프트 카드 -->
       <div class="card">
         <div class="card-header">
@@ -592,6 +643,12 @@ function flash(target, msg) {
 
 /* 공통 버튼 */
 .card-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 기본 작성 바이트 수 */
+.gen-bytes-row { display: flex; align-items: center; gap: 14px; }
+.gen-bytes-slider { flex: 1; cursor: pointer; accent-color: var(--accent-hex); }
+.gen-bytes-value { font-size: 14px; font-weight: 600; color: var(--accent-text); white-space: nowrap; }
+.gen-bytes-chars { font-weight: 400; color: var(--tx-4); }
 
 .btn-primary {
   display: inline-flex; align-items: center; gap: 6px;

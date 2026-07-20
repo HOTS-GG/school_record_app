@@ -36,6 +36,12 @@ const selectedModelLabel = ref('')
 // 행동 프로필 포함 여부
 const includeBehavior = ref(true)
 
+// 작성 바이트 수 슬라이더
+const GEN_BYTES_MIN = 100
+const GEN_BYTES_MAX = 2100
+const GEN_BYTES_STEP = 50
+const genBytes = ref(500)
+
 // PDF 분석 자료 포함 여부
 const includePdf = ref(true)
 // 이 셀의 PDF 분석 노트 목록
@@ -66,6 +72,13 @@ onMounted(async () => {
   try {
     pdfNotesList.value = await aiStore.getCellPdfNotes(props.activityId, props.studentId)
   } catch { pdfNotesList.value = [] }
+
+  // 작성 바이트 수 초기값 (마지막 사용값 → 설정 기본값 → 영역 제한 → 500)
+  try {
+    const last = await aiStore.getLastGenBytes()
+    const def = last ?? await aiStore.getDefaultGenBytes()
+    genBytes.value = def ?? props.byteLimit ?? 500
+  } catch { genBytes.value = props.byteLimit ?? 500 }
 })
 
 async function saveApiKey() {
@@ -160,13 +173,15 @@ async function generate() {
   step.value = 'generating'
   errorMsg.value = ''
   result.value = ''
+  // 마지막 사용값 기억 (실패해도 무시)
+  aiStore.setLastGenBytes(genBytes.value).catch(() => {})
   try {
     const res = await aiStore.generateRecord({
       studentName:    props.studentName,
       areaName:       props.areaName,
       activityName:   props.activityName,
       currentContent: props.currentContent,
-      byteLimit:      props.byteLimit,
+      byteLimit:      genBytes.value,
       areaId:         props.areaId,
       activityId:     props.activityId,
       studentId:      props.studentId,
@@ -243,6 +258,22 @@ function byteLength(str) {
               class="req-textarea"
               rows="4"
               placeholder="예: 수학적 사고력을 강조해줘, 리더십 역할을 부각해줘..."
+          />
+        </div>
+
+        <!-- 작성 바이트 수 슬라이더 -->
+        <div class="bytes-panel">
+          <div class="bytes-panel-header">
+            <span class="bytes-panel-title">작성 바이트 수</span>
+            <span class="bytes-panel-value">{{ genBytes }} bytes <span class="bytes-panel-chars">(한글 약 {{ Math.floor(genBytes / 3) }}자)</span></span>
+          </div>
+          <input
+              type="range"
+              class="bytes-slider"
+              v-model.number="genBytes"
+              :min="GEN_BYTES_MIN"
+              :max="GEN_BYTES_MAX"
+              :step="GEN_BYTES_STEP"
           />
         </div>
 
@@ -324,8 +355,8 @@ function byteLength(str) {
           <span class="meta-sep">·</span>
           <span class="meta-item">{{ activityName }}</span>
           <span class="meta-sep">·</span>
-          <span class="meta-bytes" :class="byteLimit && byteLength(result) > byteLimit ? 'meta-bytes--over' : ''">
-            {{ byteLength(result) }}{{ byteLimit ? ` / ${byteLimit}` : '' }} Bytes
+          <span class="meta-bytes" :class="byteLength(result) > genBytes ? 'meta-bytes--over' : ''">
+            {{ byteLength(result) }} / {{ genBytes }} Bytes
           </span>
         </div>
         <textarea v-model="result" class="result-textarea" rows="8"/>
@@ -444,6 +475,42 @@ function byteLength(str) {
   border-radius: 10px; padding: 12px 14px;
   background-color: var(--bg-0);
   transition: border-color .2s, background-color .2s;
+}
+
+/* 작성 바이트 수 슬라이더 */
+.bytes-panel {
+  border: 1.5px solid var(--bd-1);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background-color: var(--bg-0);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bytes-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.bytes-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--tx-2);
+}
+.bytes-panel-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+.bytes-panel-chars {
+  font-weight: 400;
+  color: var(--tx-4);
+}
+.bytes-slider {
+  width: 100%;
+  cursor: pointer;
+  accent-color: var(--accent-bright, #e0316e);
 }
 .ref-panel--on {
   border-color: rgba(var(--accent-rgb), 0.45);

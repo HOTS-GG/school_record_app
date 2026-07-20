@@ -307,9 +307,14 @@ pub async fn ai_generate_record(
     };
 
     let byte_info = match byte_limit {
-        Some(limit) => format!(
-            "바이트 제한: {limit} bytes (UTF-8, 한글 1자=3바이트, 영문/숫자=1바이트, 줄바꿈=2바이트). 반드시 초과하지 말 것."
-        ),
+        Some(limit) => {
+            // 모델은 바이트 계산에 약하므로 한글 글자 수로 환산해 지시 (한글 1자 = 3바이트)
+            // 여유를 두기 위해 제한의 90% 지점을 목표로 제시
+            let target_chars = (limit as f64 * 0.9 / 3.0).floor() as i64;
+            format!(
+                "분량 제한: 공백 포함 한글 기준 약 {target_chars}자 이내로 작성 (절대 {limit} bytes를 초과하면 안 됨. UTF-8 기준 한글 1자=3바이트). 짧게 쓰는 것은 허용되지만 초과는 불허."
+            )
+        }
         None => "바이트 제한 없음".to_string(),
     };
 
@@ -332,47 +337,71 @@ pub async fn ai_generate_record(
     }
 
     let client = reqwest::Client::new();
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user",   "content": user_message }
-        ]
-    });
 
-    let resp = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
-        .header("Authorization", format!("Bearer {api_key}"))
-        .header("Content-Type", "application/json")
-        .header("HTTP-Referer", APP_REFERER)
-        .header("X-Title", APP_TITLE)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("API 요청 실패: {e}"))?;
+    // 대화 이력 — 초과 시 축약 재요청에 사용
+    let mut messages = vec![
+        serde_json::json!({ "role": "system", "content": system_prompt }),
+        serde_json::json!({ "role": "user",   "content": user_message }),
+    ];
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(format!("API 오류 {status}: {text}"));
+    let mut used_model = model.clone();
+    let mut prompt_tokens: i64 = 0;
+    let mut completion_tokens: i64 = 0;
+    let mut total_tokens: i64 = 0;
+    let mut text = String::new();
+
+    // 최초 1회 + 바이트 초과 시 축약 재요청 최대 2회
+    for attempt in 0..3 {
+        let body = serde_json::json!({ "model": model, "messages": messages });
+
+        let resp = client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {api_key}"))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", APP_REFERER)
+            .header("X-Title", APP_TITLE)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("API 요청 실패: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let err_text = resp.text().await.unwrap_or_default();
+            return Err(format!("API 오류 {status}: {err_text}"));
+        }
+
+        let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+
+        text = json["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| "응답 파싱 실패".to_string())?
+            .trim()
+            .to_string();
+
+        used_model = json["model"].as_str().unwrap_or(&model).to_string();
+        prompt_tokens     += json["usage"]["prompt_tokens"].as_i64().unwrap_or(0);
+        completion_tokens += json["usage"]["completion_tokens"].as_i64().unwrap_or(0);
+        total_tokens      += json["usage"]["total_tokens"].as_i64().unwrap_or(0);
+
+        // 바이트 제한 검증 — 초과 시 축약 재요청
+        let Some(limit) = byte_limit else { break };
+        let bytes = gen_byte_length(&text);
+        if bytes <= limit || attempt == 2 {
+            break;
+        }
+
+        let target_chars = (limit as f64 * 0.85 / 3.0).floor() as i64;
+        messages.push(serde_json::json!({ "role": "assistant", "content": text }));
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": format!(
+                "방금 작성한 내용은 {bytes} bytes로 제한({limit} bytes)을 초과했습니다. \
+                핵심 내용은 유지하되 덜 중요한 수식어와 문장을 줄여 공백 포함 한글 기준 약 {target_chars}자 이내로 다시 작성해주세요. \
+                다른 설명 없이 수정된 생활기록부 문장만 출력하세요."
+            )
+        }));
     }
-
-    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-
-    let text = json["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| "응답 파싱 실패".to_string())?
-        .trim()
-        .to_string();
-
-    let used_model = json["model"]
-        .as_str()
-        .unwrap_or(&model)
-        .to_string();
-
-    let prompt_tokens     = json["usage"]["prompt_tokens"].as_i64().unwrap_or(0);
-    let completion_tokens = json["usage"]["completion_tokens"].as_i64().unwrap_or(0);
-    let total_tokens      = json["usage"]["total_tokens"].as_i64().unwrap_or(0);
 
     Ok(AiGenerateResult {
         text,
@@ -381,6 +410,12 @@ pub async fn ai_generate_record(
         completion_tokens,
         total_tokens,
     })
+}
+
+/// UTF-8 바이트 수 계산 (엔터 \n → \r\n, 프론트엔드·record.rs와 동일 로직)
+fn gen_byte_length(s: &str) -> i64 {
+    let normalized = s.replace('\r', "").replace('\n', "\r\n");
+    normalized.len() as i64
 }
 
 // ── 모델 동기화 필터 상수 ─────────────────────────────────────
