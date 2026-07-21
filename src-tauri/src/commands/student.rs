@@ -61,25 +61,33 @@ pub fn get_students_impl(
     Ok(students)
 }
 
-pub fn get_student_behavior_impl(conn: &Connection, student_id: i64) -> Result<Option<String>, String> {
-    let raw: Option<String> = conn
-        .query_row(
-            "SELECT behavior FROM Student WHERE id = ?1",
-            rusqlite::params![student_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    Ok(raw)
+pub fn get_student_behavior_impl(
+    conn: &Connection,
+    student_id: i64,
+    area_id: i64,
+) -> Result<Option<String>, String> {
+    use rusqlite::OptionalExtension;
+    conn.query_row(
+        "SELECT behavior FROM StudentAreaBehavior WHERE student_id = ?1 AND area_id = ?2",
+        rusqlite::params![student_id, area_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+    .map(|opt: Option<Option<String>>| opt.flatten())
 }
 
 pub fn set_student_behavior_impl(
     conn: &Connection,
     student_id: i64,
+    area_id: i64,
     behavior: Option<&str>,
 ) -> Result<(), String> {
     conn.execute(
-        "UPDATE Student SET behavior = ?1 WHERE id = ?2",
-        rusqlite::params![behavior, student_id],
+        "INSERT INTO StudentAreaBehavior (student_id, area_id, behavior)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(student_id, area_id) DO UPDATE SET behavior = excluded.behavior",
+        rusqlite::params![student_id, area_id, behavior],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -389,17 +397,22 @@ pub fn set_area_students(
 }
 
 #[tauri::command]
-pub fn get_student_behavior(student_id: i64, state: State<DbState>) -> Result<Option<String>, String> {
+pub fn get_student_behavior(
+    student_id: i64,
+    area_id: i64,
+    state: State<DbState>,
+) -> Result<Option<String>, String> {
     let guard = state.0.lock().unwrap();
     let conn = guard
         .as_ref()
         .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
-    get_student_behavior_impl(conn, student_id)
+    get_student_behavior_impl(conn, student_id, area_id)
 }
 
 #[tauri::command]
 pub fn set_student_behavior(
     student_id: i64,
+    area_id: i64,
     behavior: Option<String>,
     state: State<DbState>,
 ) -> Result<(), String> {
@@ -407,7 +420,7 @@ pub fn set_student_behavior(
     let conn = guard
         .as_ref()
         .ok_or_else(|| "DB가 열려있지 않습니다.".to_string())?;
-    set_student_behavior_impl(conn, student_id, behavior.as_deref())
+    set_student_behavior_impl(conn, student_id, area_id, behavior.as_deref())
 }
 
 #[tauri::command]

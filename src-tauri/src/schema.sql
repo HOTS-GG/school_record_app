@@ -56,6 +56,17 @@ CREATE TABLE IF NOT EXISTS AreaStudent
     FOREIGN KEY (student_id) REFERENCES Student (id) ON DELETE CASCADE
 );
 
+-- 학생 × 영역별 행동 프로필
+CREATE TABLE IF NOT EXISTS StudentAreaBehavior
+(
+    student_id INTEGER NOT NULL,
+    area_id    INTEGER NOT NULL,
+    behavior   TEXT,
+    PRIMARY KEY (student_id, area_id),
+    FOREIGN KEY (student_id) REFERENCES Student (id) ON DELETE CASCADE,
+    FOREIGN KEY (area_id)    REFERENCES Area (id)    ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS ActivityRecord
 (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

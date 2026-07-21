@@ -6,7 +6,7 @@ use std::path::Path;
 /// 스키마 변경 시 이 값을 올리고 MIGRATIONS 배열에 SQL을 추가한다.
 /// 중요: 스키마 버전을 올릴 때는 반드시 Cargo.toml의 version(app_version)도 함께 올려야 한다.
 /// app_version이 바뀌지 않으면 릴리즈 노트 모달이 표시되지 않는다.
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// 인덱스 i: 버전 i → i+1 로 올리는 SQL.
 /// [0] v0→v1: 버전 도입 이전 DB를 v1으로 승격. 스키마는 IF NOT EXISTS로 생성되어 있으므로 SQL 없음.
@@ -98,6 +98,20 @@ const MIGRATIONS: &[&str] = &[
      CREATE INDEX IF NOT EXISTS idx_cell_pdf_note_cell ON CellPdfNote (activity_id, student_id);",
     // v11 → v12: CellPdfNote에 enabled 컬럼 추가 (AI 생성 사용 여부 체크박스)
     "ALTER TABLE CellPdfNote ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;",
+    // v12 → v13: 행동 프로필을 학생×영역별로 분리 (기존 전역 프로필은 배정된 모든 영역에 복사)
+    "CREATE TABLE IF NOT EXISTS StudentAreaBehavior (
+         student_id INTEGER NOT NULL,
+         area_id    INTEGER NOT NULL,
+         behavior   TEXT,
+         PRIMARY KEY (student_id, area_id),
+         FOREIGN KEY (student_id) REFERENCES Student(id) ON DELETE CASCADE,
+         FOREIGN KEY (area_id)    REFERENCES Area(id)    ON DELETE CASCADE
+     );
+     INSERT INTO StudentAreaBehavior (student_id, area_id, behavior)
+         SELECT s.id, as_.area_id, s.behavior
+         FROM Student s
+         JOIN AreaStudent as_ ON as_.student_id = s.id
+         WHERE s.behavior IS NOT NULL AND s.behavior != '';",
 ];
 
 // ── 내부 헬퍼 ────────────────────────────────────────────────

@@ -92,7 +92,7 @@ async function loadBehaviorMap() {
 }
 
 async function handleBehaviorSaved({ studentId, behavior }) {
-  await studentStore.setStudentBehavior(studentId, behavior)
+  await studentStore.setStudentBehavior(studentId, selectedAreaId.value, behavior)
   // 로컬 맵 즉시 반영
   const next = { ...behaviorMap.value }
   next[studentId] = behavior

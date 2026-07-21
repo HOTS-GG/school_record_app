@@ -40,9 +40,10 @@ pub fn get_area_grid_impl(
 
     let mut stmt = conn
         .prepare(
-            "SELECT s.id, s.grade, s.class_num, s.number, s.name, s.tags, s.behavior
+            "SELECT s.id, s.grade, s.class_num, s.number, s.name, s.tags, sab.behavior
              FROM Student s
              JOIN AreaStudent as_ ON s.id = as_.student_id
+             LEFT JOIN StudentAreaBehavior sab ON sab.student_id = s.id AND sab.area_id = ?1
              WHERE as_.area_id = ?1
              ORDER BY s.grade, s.class_num, s.number",
         )
