@@ -314,8 +314,8 @@ async function doExport() {
     <!-- 헤더 -->
     <div class="toolbar">
       <div class="section-header">
-        <h2 class="section-title">체크리스트 내보내기(Checklist Export)</h2>
-        <p class="section-desc">학교생활기록부 점검을 위해 활동(Activity)별 키워드 혹은 주제를 추출하여 내보냅니다.</p>
+        <h2 class="section-title">체크리스트 내보내기</h2>
+        <p class="section-desc">학교생활기록부 점검을 위해 활동별 키워드 혹은 주제를 추출하여 내보냅니다.</p>
       </div>
     </div>
 
@@ -332,7 +332,7 @@ async function doExport() {
 
       <!-- Step 1: 영역 선택 -->
       <div v-if="step === 1" class="step-content">
-        <h3 class="step-title">Step 1. 영역(Area) 선택</h3>
+        <h3 class="step-title">Step 1. 영역 선택</h3>
         <p class="step-desc">체크리스트를 만들 영역을 선택하세요.</p>
 
         <p v-if="exportError && areaStore.areas.length === 0" class="error-text">{{ exportError }}</p>

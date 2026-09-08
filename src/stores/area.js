@@ -60,6 +60,11 @@ export const useAreaStore = defineStore('area', () => {
         return added
     }
 
+    // 영역 이름에 대응하는 권장 지침 (기본 영역이 아니면 null) — 추가 모달 미리보기용
+    async function getDefaultPrompt(name) {
+        return await invoke('get_area_default_prompt', {name})
+    }
+
     async function setAreaBehaviorItems(areaId, items) {
         const json = items ? JSON.stringify(items) : null
         await invoke('set_area_behavior_items', {areaId, items: json})
@@ -68,7 +73,7 @@ export const useAreaStore = defineStore('area', () => {
 
     return {
         areas, loading, error,
-        fetchAreas, createArea, updateArea, deleteArea,
+        fetchAreas, createArea, updateArea, deleteArea, getDefaultPrompt,
         setAreaActivities, getAreaStudents, setAreaStudents,
         seedDefaultAreas, seedAreasByRole, setAreaBehaviorItems,
     }

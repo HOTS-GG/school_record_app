@@ -681,7 +681,7 @@ function resetWizard() {
     <!-- 툴바 -->
     <div class="toolbar">
       <div class="section-header">
-        <h2 class="section-title">데이터 가져오기(Import)</h2>
+        <h2 class="section-title">데이터 가져오기</h2>
         <p class="section-desc">다양한 형식의 학교생활기록부 기재 문장을 본 프로그램으로 가져옵니다.</p>
       </div>
     </div>
@@ -702,7 +702,7 @@ function resetWizard() {
 
         <!-- 예시 파일 다운로드 -->
         <div class="sample-section">
-          <h3 class="step-title">Step 0. 가져오기(Import) 가능한 파일 안내</h3>
+          <h3 class="step-title">Step 0. 가져오기 가능한 파일 안내</h3>
           <p class="step-desc">가져오기 가능한 파일은 두 가지 유형(행 단위, 열 단위)입니다. 예시 다운로드 버튼을 눌러 각 유형의 예시를 확인하세요.</p>
 
           <div class="type-cards">

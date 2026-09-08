@@ -1,5 +1,6 @@
 ﻿<script setup>
 import { ref, watch } from 'vue'
+import { useModalPresence } from '../composables/useModalPresence'
 import { useRecordStore } from '../stores/record.js'
 import { X } from 'lucide-vue-next'
 import DiffView from './DiffView.vue'
@@ -99,6 +100,9 @@ async function saveManualSnapshot() {
     saving.value = false
   }
 }
+
+// 떠 있는 동안 타이틀바를 투명 모드로 (자체 오버레이라 BaseModal을 안 거침)
+useModalPresence()
 </script>
 
 <template>

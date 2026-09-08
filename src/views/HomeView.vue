@@ -274,13 +274,23 @@ function handlePasswordCancel() {
 </template>
 
 <style scoped>
+/* 루트 래퍼 — App.vue의 flex column에서 남은 높이를 받아 .page에 넘긴다.
+   (.page에만 flex:1을 주면 이 래퍼가 내용 높이로 줄어 아래가 비어 보인다) */
+.activity-section-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── 전체 페이지 ── */
 .page {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   background-color: var(--bg-0);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

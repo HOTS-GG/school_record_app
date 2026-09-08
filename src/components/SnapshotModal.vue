@@ -1,5 +1,6 @@
 ﻿<script setup>
 import {onMounted, ref} from 'vue'
+import {useModalPresence} from '../composables/useModalPresence'
 import {useSnapshotStore} from '../stores/snapshot.js'
 import {GitBranch, Plus, RotateCcw, X} from 'lucide-vue-next'
 
@@ -71,6 +72,9 @@ function formatDate(str) {
 }
 
 onMounted(loadSnapshots)
+
+// 떠 있는 동안 타이틀바를 투명 모드로 (자체 오버레이라 BaseModal을 안 거침)
+useModalPresence()
 </script>
 
 <template>
@@ -81,7 +85,7 @@ onMounted(loadSnapshots)
       <div class="modal-header">
         <div class="modal-title">
           <GitBranch :size="16" class="title-icon"/>
-          <span>스냅샷(Snapshot)</span>
+          <span>버전 관리</span>
         </div>
         <button class="btn-close" @click="emit('close')"><X :size="18"/></button>
       </div>

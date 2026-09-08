@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { useSlots } from 'vue'
 import { X } from 'lucide-vue-next'
+import { useModalPresence } from '../composables/useModalPresence'
 
 defineProps({
   title: { type: String, required: true },
@@ -11,6 +12,9 @@ defineProps({
 
 const emit = defineEmits(['close'])
 const slots = useSlots()
+
+// 떠 있는 동안 타이틀바를 투명 모드로
+useModalPresence()
 </script>
 
 <template>

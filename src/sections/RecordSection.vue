@@ -1,6 +1,6 @@
 ﻿<script setup>
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue'
-import {ALargeSmall, ArrowLeftRight, Brain, Clipboard, CircleAlert, Eye, FileText, Minimize2, Sparkles, TableProperties} from 'lucide-vue-next'
+import {ALargeSmall, ArrowLeftRight, Bot, Brain, Clipboard, CircleAlert, Eye, FileText, Minimize2, Sparkles, TableProperties} from 'lucide-vue-next'
 import {open as openDialog} from '@tauri-apps/plugin-dialog'
 import {useAreaStore} from '../stores/area'
 import {useRecordStore} from '../stores/record'
@@ -13,6 +13,7 @@ import StudentBehaviorModal from '../components/StudentBehaviorModal.vue'
 import StudentFullPreviewModal from '../components/StudentFullPreviewModal.vue'
 import AllAreaByteSummaryModal from '../components/AllAreaByteSummaryModal.vue'
 import CellPdfBatchModal from '../components/CellPdfBatchModal.vue'
+import WritingAssistPanel from '../components/WritingAssistPanel.vue'
 
 const areaStore = useAreaStore()
 const recordStore = useRecordStore()
@@ -23,7 +24,8 @@ const aiStore = useAiStore()
 const selectedAreaId = ref(null)
 const loadError = ref('')
 const smartScroll = ref(true)
-const compactCell = ref(true)
+// 셀 높이 고정 여부 — 설정에 기억되며 기본은 자동
+const compactCell = computed(() => configStore.recordCellCompact)
 const collapsedActivities = ref(new Set())
 
 // 학생 정보 열 너비 (px) — 드래그로 리사이즈
@@ -117,11 +119,16 @@ async function changeFontSize(delta) {
   }
 }
 
-function toggleActivity(actId) {
+async function toggleActivity(actId) {
   const next = new Set(collapsedActivities.value)
   if (next.has(actId)) next.delete(actId)
   else next.add(actId)
   collapsedActivities.value = next
+  // 펼칠 때 textarea가 새로 만들어지므로 자동 높이를 다시 맞춘다
+  if (!compactCell.value) {
+    await nextTick()
+    document.querySelectorAll('.cell-input').forEach(autoResize)
+  }
 }
 
 // 셀별 저장 상태 map: `${activityId}-${studentId}` → 'saving' | 'saved' | null
@@ -196,16 +203,33 @@ function autoResize(el) {
   el.style.height = el.scrollHeight + 'px'
 }
 
-async function toggleCompactCell() {
-  compactCell.value = !compactCell.value
+// 코드로 셀 내용을 바꾼 뒤(AI 생성 적용, 붙여넣기 등) 자동 높이를 다시 맞춘다.
+// input 이벤트를 거치지 않는 변경은 onCellInput의 autoResize를 타지 않기 때문.
+async function resizeCellAfterUpdate(activityId, studentId) {
+  if (compactCell.value) return
   await nextTick()
+  const el = document.querySelector(
+    `textarea.cell-input[data-activity-id="${activityId}"][data-student-id="${studentId}"]`
+  )
+  if (el) autoResize(el)
+}
+
+// 고정/자동 상태에 맞춰 화면의 모든 셀 높이를 맞춘다
+function syncAllCellHeights() {
   document.querySelectorAll('.cell-input').forEach(el => {
-    if (compactCell.value) {
-      el.style.height = ''
-    } else {
-      autoResize(el)
-    }
+    if (compactCell.value) el.style.height = ''
+    else autoResize(el)
   })
+}
+
+// 토글로 바뀌든 설정이 뒤늦게 로드되든, 값이 바뀌면 DOM을 한 곳에서 동기화한다
+watch(compactCell, async () => {
+  await nextTick()
+  syncAllCellHeights()
+})
+
+async function toggleCompactCell() {
+  await configStore.setRecordCellCompact(!compactCell.value)
 }
 
 function onCellInput(activityId, studentId, event) {
@@ -347,6 +371,7 @@ function pasteCell(activityId, studentId) {
   map.set(key, pasteSource.value.content)
   cellContent.value = map
   saveCell(activityId, studentId, pasteSource.value.content)
+  resizeCellAfterUpdate(activityId, studentId)
 }
 
 function cancelPasteMode() {
@@ -422,8 +447,90 @@ async function openPdfForCell(act, student) {
   }
 }
 
+// 작성 도우미 — 셀에서 드래그한 문장을 맥락으로 질문하고, 답변을 그 자리에 반영
+const assistVisible   = ref(false)
+const assistSelection = ref('')
+const assistArea      = ref('')
+const assistActivity  = ref('')
+const assistStudent   = ref('')
+// 선택이 일어난 셀과 범위 — 답변을 셀에 되돌려 넣을 때 사용
+const assistTarget    = ref(null) // { activityId, studentId, start, end } | null
+
+// textarea는 window.getSelection()으로 읽을 수 없어 selectionStart/End를 직접 본다
+function onCellSelectionChange(event) {
+  const el = event.target
+  if (!el || el.tagName !== 'TEXTAREA' || !el.classList.contains('cell-input')) return
+
+  const {selectionStart: start, selectionEnd: end} = el
+  // 단순 클릭(범위 없음)은 무시 — 직전 선택을 유지한다
+  if (start === end) return
+
+  // 앞뒤 공백은 선택에서 제외하고, 반영 범위도 그에 맞춰 좁힌다
+  const raw = String(el.value ?? '').slice(start, end)
+  const text = raw.trim()
+  if (!text) return
+  const lead = raw.length - raw.trimStart().length
+  const trail = raw.length - raw.trimEnd().length
+
+  const activityId = Number(el.dataset.activityId)
+  assistSelection.value = text
+  assistTarget.value = {
+    activityId,
+    studentId: Number(el.dataset.studentId),
+    start: start + lead,
+    end: end - trail,
+  }
+  assistActivity.value = recordStore.gridData?.activities.find(a => a.id === activityId)?.name ?? ''
+  assistArea.value = areaStore.areas.find(a => a.id === selectedAreaId.value)?.name ?? ''
+  assistStudent.value = recordStore.gridData?.students.find(s => s.id === assistTarget.value.studentId)?.name ?? ''
+}
+
+function clearAssistSelection() {
+  assistSelection.value = ''
+  assistTarget.value = null
+  assistStudent.value = ''
+}
+
+// 답변의 표현을 셀의 선택 범위에 넣는다.
+// execCommand('insertText')는 네이티브 undo 스택을 유지하고 input 이벤트를 발생시켜
+// onCellInput → 자동 저장까지 그대로 이어진다.
+function applyAssistText(text) {
+  const t = assistTarget.value
+  if (!t || !text) return
+  const el = document.querySelector(
+    `textarea.cell-input[data-activity-id="${t.activityId}"][data-student-id="${t.studentId}"]`
+  )
+  if (!el) return
+
+  el.focus()
+  el.setSelectionRange(t.start, t.end)
+  const ok = document.execCommand('insertText', false, text)
+  if (!ok) {
+    // execCommand 미지원 시 직접 치환하고 input 이벤트를 수동으로 올린다
+    const v = el.value
+    el.value = v.slice(0, t.start) + text + v.slice(t.end)
+    el.dispatchEvent(new Event('input', {bubbles: true}))
+  }
+
+  // 방금 넣은 표현을 새 선택 범위로 잡아, 다른 대안을 연달아 시도할 수 있게 한다
+  const newEnd = t.start + text.length
+  el.setSelectionRange(t.start, newEnd)
+  assistTarget.value = {...t, end: newEnd}
+  assistSelection.value = text
+}
+
+// 영역을 바꾸면 이전 선택은 더 이상 유효하지 않다
+watch(selectedAreaId, clearAssistSelection)
+
 // 미작성 학생만 보기 필터
 const filterEmptyOnly = ref(false)
+
+// 필터를 풀면 숨겨졌던 행의 textarea가 새로 만들어지므로 높이를 다시 맞춘다
+watch(filterEmptyOnly, async () => {
+  if (compactCell.value) return
+  await nextTick()
+  syncAllCellHeights()
+})
 
 const displayedStudents = computed(() => {
   if (!recordStore.gridData) return []
@@ -488,6 +595,7 @@ function onAiAccept(text) {
   map.set(key, text)
   cellContent.value = map
   saveCell(activityId, studentId, text)
+  resizeCellAfterUpdate(activityId, studentId)
   aiModal.value = null
 }
 
@@ -511,7 +619,7 @@ function isNewGroup(students, index) {
               v-model="selectedAreaId"
               class="area-select"
           >
-            <option :value="null" disabled>영역(Area) 선택</option>
+            <option :value="null" disabled>영역 선택</option>
             <option
                 v-for="area in areaStore.areas"
                 :key="area.id"
@@ -605,7 +713,7 @@ function isNewGroup(students, index) {
 
       <!-- 빈 상태: 영역 미선택 -->
       <div v-if="!selectedAreaId" class="empty-state">
-        <p class="empty-text">상단 드롭다운 메뉴에서 영역(Area)을 선택하세요.</p>
+        <p class="empty-text">상단 드롭다운 메뉴에서 영역을 선택하세요.</p>
       </div>
 
       <!-- 로딩 -->
@@ -622,10 +730,10 @@ function isNewGroup(students, index) {
       <div v-else-if="!recordStore.gridData || recordStore.gridData.students.length === 0 || recordStore.gridData.activities.length === 0"
            class="empty-state">
         <p class="empty-text">
-          <template v-if="recordStore.gridData && recordStore.gridData.students.length === 0">이 영역에 배정된 학생이 없습니다. 영역(Area) 관리에서 <strong><u>학생
+          <template v-if="recordStore.gridData && recordStore.gridData.students.length === 0">이 영역에 배정된 학생이 없습니다. 영역 관리에서 <strong><u>학생
             배정</u></strong> 버튼을 눌러 학생을 배정하세요.
           </template>
-          <template v-else-if="recordStore.gridData && recordStore.gridData.activities.length === 0">이 영역에 등록된 활동이 없습니다. 영역(Area) 관리에서
+          <template v-else-if="recordStore.gridData && recordStore.gridData.activities.length === 0">이 영역에 등록된 활동이 없습니다. 영역 관리에서
             <strong><u>포함할 활동</u></strong>을 추가하세요.
           </template>
           <template v-else>데이터를 불러올 수 없습니다.</template>
@@ -633,7 +741,13 @@ function isNewGroup(students, index) {
       </div>
 
       <!-- 그리드 -->
-      <div v-else class="grid-wrapper" @wheel="onGridWheel">
+      <div
+          v-else
+          class="grid-wrapper"
+          @wheel="onGridWheel"
+          @mouseup="onCellSelectionChange"
+          @keyup="onCellSelectionChange"
+      >
         <table :class="['grid-table', visibleActivityCount <= 2 ? 'grid-table--fit' : '']">
           <!-- colgroup: 모든 열 너비를 한 곳에서 정의 → th/td 개별 width 불필요 -->
           <colgroup>
@@ -751,6 +865,8 @@ function isNewGroup(students, index) {
                   class="cell-input"
                   :class="{ 'cell-input--compact': compactCell }"
                   :value="getCellContent(act.id, student.id)"
+                  :data-activity-id="act.id"
+                  :data-student-id="student.id"
                   @input="onCellInput(act.id, student.id, $event)"
                   rows="1"
               />
@@ -758,7 +874,7 @@ function isNewGroup(students, index) {
                   {{ byteLength(getCellContent(act.id, student.id) || '') }} Bytes
                   <span class="history-sep">|</span>
                   <button class="btn-history" @click.stop="copyCell(act.id, student.id)">
-                    {{ copiedCells.has(cellKey(act.id, student.id)) ? 'Copied!' : 'Copy' }}
+                    {{ copiedCells.has(cellKey(act.id, student.id)) ? '복사됨' : '복사' }}
                   </button>
                   <template v-if="pasteSource">
                     <span class="history-sep">|</span>
@@ -767,7 +883,7 @@ function isNewGroup(students, index) {
                     </button>
                   </template>
                   <span class="history-sep">|</span>
-                  <button class="btn-history" @click.stop="openHistory(act, student)">History</button>
+                  <button class="btn-history" @click.stop="openHistory(act, student)">이력</button>
                   <span class="history-sep">|</span>
                   <button class="btn-ai-gen" @click.stop="openAiModal(act, student)" title="AI로 문구 생성">
                     <Sparkles :size="12" />AI 생성
@@ -826,16 +942,39 @@ function isNewGroup(students, index) {
     />
 
     <!-- 행동 프로필 모달 -->
-    <transition name="modal">
-      <StudentBehaviorModal
-          v-if="behaviorModalVisible && recordStore.gridData"
-          :students="recordStore.gridData.students"
-          :behavior-map="behaviorMap"
-          :area-id="selectedAreaId"
-          @close="behaviorModalVisible = false"
-          @saved="handleBehaviorSaved"
-      />
-    </transition>
+    <StudentBehaviorModal
+        v-if="behaviorModalVisible && recordStore.gridData"
+        :students="recordStore.gridData.students"
+        :behavior-map="behaviorMap"
+        :area-id="selectedAreaId"
+        @close="behaviorModalVisible = false"
+        @saved="handleBehaviorSaved"
+    />
+
+    <!-- 작성 도우미 (플로팅) — v-show라 닫아도 대화가 유지된다 -->
+    <WritingAssistPanel
+        v-show="assistVisible"
+        :selection="assistSelection"
+        :area-name="assistArea"
+        :activity-name="assistActivity"
+        :student-name="assistStudent"
+        :can-apply="!!assistTarget"
+        @close="assistVisible = false"
+        @clear-selection="clearAssistSelection"
+        @apply="applyAssistText"
+    />
+
+    <!-- 도우미 열기 버튼 — mousedown.prevent로 셀의 선택 하이라이트를 지키면서 연다 -->
+    <button
+        v-if="!assistVisible && recordStore.gridData"
+        class="assist-fab"
+        title="작성 도우미 — 셀에서 문장을 드래그하면 그 문장에 대해 물어볼 수 있습니다"
+        @mousedown.prevent
+        @click="assistVisible = true"
+    >
+      <Bot :size="22"/>
+      <span v-if="assistSelection" class="assist-fab-dot" title="선택한 문장이 있습니다"/>
+    </button>
 
     <!-- 학생 활동 PDF 일괄 분석 모달 -->
     <CellPdfBatchModal
@@ -884,7 +1023,7 @@ function isNewGroup(students, index) {
   padding: 12px 24px;
   border-bottom: 1px solid var(--bd-1);
   flex-shrink: 0;
-  gap: 8px 12px;
+  gap: 8px 10px;
   background-color: var(--bg-0);
 }
 
@@ -900,20 +1039,20 @@ function isNewGroup(students, index) {
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto; /* primary 오른쪽으로 밀고, wrap 시에도 오른쪽 정렬 유지 */
 }
 
 .area-select {
-  padding: 8px 14px;
+  padding: 7px 12px;
   border-radius: 10px;
   border: 1px solid var(--bd-1);
   background-color: var(--bg-0);
   color: var(--tx-1);
-  font-size: 15px;
+  font-size: 14px;
   cursor: pointer;
   outline: none;
-  min-width: 180px;
+  min-width: 160px;
 }
 
 .area-select:focus {
@@ -924,7 +1063,7 @@ function isNewGroup(students, index) {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 14px;
+  padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid rgba(var(--accent-rgb), 0.3);
   background-color: rgba(var(--accent-rgb), 0.08);
@@ -972,16 +1111,18 @@ function isNewGroup(students, index) {
   text-align: center;
 }
 
+/* 툴바 버튼 7개 + 영역 선택이 기본 창 폭(1280)에서 한 줄에 들어가도록 잡은 크기.
+   더 좁아지면 .toolbar의 flex-wrap이 안전장치로 동작한다. */
 .btn-freeze {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  gap: 5px;
+  padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid var(--bd-1);
   background: none;
   color: var(--tx-3);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
@@ -1001,6 +1142,43 @@ function isNewGroup(students, index) {
   color: var(--accent-bright);
   border-color: rgba(var(--accent-rgb), 0.3);
   background-color: rgba(var(--accent-rgb), 0.08);
+}
+
+/* 작성 도우미 열기 버튼 (우하단 고정) */
+.assist-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 49;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--accent-hex);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(var(--accent-rgb), 0.38);
+  transition: transform .15s, box-shadow .15s;
+}
+
+.assist-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(var(--accent-rgb), 0.45);
+}
+
+/* 선택한 문장이 있음을 알리는 점 */
+.assist-fab-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: 2px solid var(--accent-hex);
 }
 
 /* 빈 상태 */

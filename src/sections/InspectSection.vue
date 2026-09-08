@@ -445,7 +445,7 @@ onMounted(() => {
     <!-- 헤더 -->
     <div class="toolbar">
       <div class="section-header">
-        <h2 class="section-title">유의어 점검(Inspect)</h2>
+        <h2 class="section-title">유의어 점검</h2>
         <p class="section-desc">중·고등학교 학교생활기록부 기재요령에 근거하여 유의어 및 금지어를 점검합니다.</p>
       </div>
     </div>

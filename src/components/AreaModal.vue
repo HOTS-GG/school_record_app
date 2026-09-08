@@ -2,6 +2,7 @@
 import {computed, ref, watch} from 'vue'
 import {AlertTriangle, Menu, Trash2, X} from 'lucide-vue-next'
 import BaseModal from './BaseModal.vue'
+import {useAreaStore} from '../stores/area'
 
 const props = defineProps({
   mode: {type: String, default: 'add'}, // 'add' | 'edit'
@@ -11,6 +12,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'saved', 'deleted'])
+
+const areaStore = useAreaStore()
 
 const name = ref('')
 const byteLimit = ref(1500)
@@ -81,6 +84,26 @@ watch(
     },
     {immediate: true}
 )
+
+// 추가 모드에서 기본 영역 이름을 입력하면 권장 지침을 미리 채워 보여준다.
+// 교사가 지침을 직접 고쳤다면(자동으로 넣은 값과 다르면) 건드리지 않는다.
+let autoFilledPrompt = ''
+watch(name, async (raw) => {
+  if (props.mode !== 'add') return
+  const trimmed = raw.trim()
+  let suggested = null
+  try {
+    suggested = trimmed ? await areaStore.getDefaultPrompt(trimmed) : null
+  } catch (e) {
+    console.error('권장 지침 조회 실패:', e)
+    return
+  }
+  if (name.value.trim() !== trimmed) return   // 조회 중에 이름이 또 바뀜
+  const untouched = prompt.value.trim() === '' || prompt.value === autoFilledPrompt
+  if (!untouched) return
+  prompt.value = suggested ?? ''
+  autoFilledPrompt = suggested ?? ''
+})
 
 function validate() {
   if (!name.value.trim()) {
@@ -184,10 +207,10 @@ function handleDelete() {
           <textarea
               v-model="prompt"
               class="ui-input prompt-textarea"
-              placeholder="이 영역 전용 AI 역할 프롬프트를 입력하세요.&#10;비워두면 설정의 전역 프롬프트가 사용됩니다."
+              placeholder="이 영역에서 AI가 추가로 따를 지침을 입력하세요.&#10;자율활동·진로활동 등 기본 영역 이름을 입력하면 권장 지침이 자동으로 채워집니다."
               rows="5"
           />
-          <p class="field-hint">비워두면 설정(Settings)의 전역 프롬프트 적용</p>
+          <p class="field-hint field-hint--left">전역 프롬프트에 덧붙여 적용됩니다.</p>
         </div>
 
         <!-- 삭제 경고 (편집 + 확인 단계) -->
@@ -381,6 +404,11 @@ function handleDelete() {
   color: var(--tx-3);
   margin: 0;
   text-align: right;
+}
+
+/* 여러 줄로 감길 수 있는 힌트는 왼쪽 정렬 */
+.field-hint--left {
+  text-align: left;
 }
 
 /* 우측 패널 */

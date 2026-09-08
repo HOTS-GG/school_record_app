@@ -12,6 +12,105 @@ fn temp_path(label: &str) -> std::path::PathBuf {
     p
 }
 
+/// 버전 도입 이전(v0) 시절의 스키마.
+/// 마이그레이션이 추가한 컬럼·테이블은 일부러 제외되어 있어야 한다.
+/// 최신 schema.sql로 만든 DB에 user_version만 0으로 위조하면
+/// ALTER TABLE이 기존 컬럼과 충돌하므로 마이그레이션 체인을 검증할 수 없다.
+const LEGACY_V0_SCHEMA: &str = "
+CREATE TABLE Student (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grade INTEGER NOT NULL, class_num INTEGER NOT NULL, number INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE (grade, class_num, number)
+);
+CREATE TABLE Area (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    byte_limit INTEGER NOT NULL CHECK (byte_limit > 0)
+);
+CREATE TABLE Activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE AreaActivity (
+    area_id INTEGER NOT NULL, activity_id INTEGER NOT NULL,
+    PRIMARY KEY (area_id, activity_id),
+    FOREIGN KEY (area_id) REFERENCES Area (id) ON DELETE CASCADE,
+    FOREIGN KEY (activity_id) REFERENCES Activity (id) ON DELETE CASCADE
+);
+CREATE TABLE AreaStudent (
+    area_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+    PRIMARY KEY (area_id, student_id),
+    FOREIGN KEY (area_id) REFERENCES Area (id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES Student (id) ON DELETE CASCADE
+);
+CREATE TABLE ActivityRecord (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_id INTEGER NOT NULL, student_id INTEGER NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (activity_id, student_id),
+    FOREIGN KEY (activity_id) REFERENCES Activity (id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES Student (id) ON DELETE CASCADE
+);
+CREATE TABLE ActivityRecordHistory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    activity_record_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (activity_record_id) REFERENCES ActivityRecord (id) ON DELETE CASCADE
+);
+CREATE TABLE Snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    memo TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE ReplaceRule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    old_text TEXT NOT NULL, new_text TEXT NOT NULL,
+    is_regex INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (old_text, new_text)
+);
+CREATE TABLE SynonymGroup (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE SynonymItem (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL, word TEXT NOT NULL,
+    UNIQUE (group_id, word),
+    FOREIGN KEY (group_id) REFERENCES SynonymGroup (id) ON DELETE CASCADE
+);
+CREATE TABLE APP_CONFIGS (
+    config_key TEXT PRIMARY KEY,
+    config_value TEXT NOT NULL
+);
+";
+
+/// v0 스키마로 DB 파일을 만들고 user_version = 0으로 둔다.
+fn create_legacy_v0_db(path: &std::path::Path) {
+    let conn = Connection::open(path).unwrap();
+    conn.execute_batch(LEGACY_V0_SCHEMA).unwrap();
+    conn.pragma_update(None, "user_version", 0u32).unwrap();
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .unwrap();
+    let cols: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(1))
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+    cols.iter().any(|c| c == column)
+}
+
 fn table_exists(conn: &Connection, name: &str) -> bool {
     conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -125,13 +224,9 @@ fn test_open_existing_does_not_auto_migrate() {
 
 #[test]
 fn test_migrate_schema_upgrades_to_current_version() {
-    // migrate_schema_impl 호출 후 user_version이 SCHEMA_VERSION이 되어야 함
+    // v0 스키마에서 시작해 마이그레이션 체인 전체가 통과해야 함
     let path = temp_path("migrate_upgrade");
-    {
-        let conn = db::create_new(&path).unwrap();
-        conn.pragma_update(None, "user_version", 0u32).unwrap();
-        drop(conn);
-    }
+    create_legacy_v0_db(&path);
 
     let mut conn = db::open_existing(&path).unwrap();
     migrate_schema_impl(&mut conn).unwrap();
@@ -140,6 +235,95 @@ fn test_migrate_schema_upgrades_to_current_version() {
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .unwrap();
     assert_eq!(version, db::SCHEMA_VERSION);
+
+    drop(conn);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn test_migrate_v0_adds_all_columns_and_tables() {
+    // 각 마이그레이션이 추가하기로 한 컬럼·테이블이 실제로 생겼는지 검증
+    let path = temp_path("migrate_shape");
+    create_legacy_v0_db(&path);
+
+    let mut conn = db::open_existing(&path).unwrap();
+    migrate_schema_impl(&mut conn).unwrap();
+
+    // 컬럼 추가 (v2~v9, v12)
+    for (table, column) in [
+        ("Area", "prompt"),            // v2
+        ("Student", "tags"),           // v3
+        ("Area", "role"),              // v4
+        ("Student", "behavior"),       // v4
+        ("Area", "behavior_items"),    // v5
+        ("AreaActivity", "sort_order"),// v7
+        ("ReplaceRule", "note"),       // v8
+        ("Activity", "prompt"),        // v9
+        ("Activity", "date_info"),     // v9
+        ("CellPdfNote", "enabled"),    // v12
+        ("CellPdfNote", "id"),         // v11 (복합 PK → id PK 재구성)
+    ] {
+        assert!(
+            column_exists(&conn, table, column),
+            "마이그레이션 후 {table}.{column} 컬럼이 없음"
+        );
+    }
+
+    // 테이블 추가 (v2, v6, v10, v13)
+    for t in [
+        "ChatSession", "ChatMessage",   // v2
+        "OcrSession", "OcrResult",      // v6
+        "CellPdfNote",                  // v10
+        "StudentAreaBehavior",          // v13
+    ] {
+        assert!(table_exists(&conn, t), "마이그레이션 후 {t} 테이블이 없음");
+    }
+
+    drop(conn);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn test_migrate_v0_preserves_existing_data() {
+    // 마이그레이션이 기존 데이터를 잃지 않아야 함
+    let path = temp_path("migrate_data");
+    create_legacy_v0_db(&path);
+
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.execute(
+            "INSERT INTO Student (grade, class_num, number, name) VALUES (2, 5, 1, '홍길동')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO Area (name, byte_limit) VALUES ('자율활동', 1500)",
+            [],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO Activity (name) VALUES ('진로탐색')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO ActivityRecord (activity_id, student_id, content) VALUES (1, 1, '기존 기록')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let mut conn = db::open_existing(&path).unwrap();
+    migrate_schema_impl(&mut conn).unwrap();
+
+    let name: String = conn
+        .query_row("SELECT name FROM Student WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(name, "홍길동");
+
+    let content: String = conn
+        .query_row("SELECT content FROM ActivityRecord WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(content, "기존 기록");
 
     drop(conn);
     let _ = std::fs::remove_file(&path);

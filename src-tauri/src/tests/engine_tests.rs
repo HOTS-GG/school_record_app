@@ -17,6 +17,7 @@ fn make_rule(id: i64, old: &str, new: &str, enabled: bool, priority: i64) -> Rep
         enabled,
         priority,
         created_at: String::new(),
+        note: None,
         updated_at: String::new(),
         conflicts: vec![],
     }
@@ -31,6 +32,7 @@ fn make_regex_rule(id: i64, old: &str, new: &str, enabled: bool, priority: i64) 
         enabled,
         priority,
         created_at: String::new(),
+        note: None,
         updated_at: String::new(),
         conflicts: vec![],
     }

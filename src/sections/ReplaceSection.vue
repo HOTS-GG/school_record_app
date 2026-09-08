@@ -235,7 +235,7 @@ onMounted(async () => {
     <!-- 헤더 -->
     <div class="toolbar">
       <div class="section-header">
-        <h2 class="section-title">문장 정리(Replace)</h2>
+        <h2 class="section-title">문장 정리</h2>
         <p class="section-desc">학교생활기록부 문장의 특수문자, 텍스트 등을 일괄 교체합니다.</p>
       </div>
     </div>

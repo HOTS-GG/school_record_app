@@ -1,7 +1,7 @@
 ﻿<script setup>
 import { ref, computed, onMounted } from 'vue'
 import { Eye, EyeOff, Pencil, Trash2, Plus, Check, X, RotateCcw, Sun, Moon, Pipette, RefreshCw } from 'lucide-vue-next'
-import { useAiStore, DEFAULT_SYSTEM_PROMPT, DEFAULT_MODEL, groupModelsByProvider } from '../stores/ai'
+import { useAiStore, DEFAULT_MODEL, groupModelsByProvider } from '../stores/ai'
 import { useThemeStore, DEFAULT_ACCENT, computeAccentVars, hexToRgb } from '../stores/theme'
 
 const aiStore    = useAiStore()
@@ -36,7 +36,9 @@ const genBytesSaving   = ref(false)
 const genBytesSuccess  = ref('')
 
 // ── 역할 프롬프트 ──────────────────────────────────────
-const systemPrompt  = ref(DEFAULT_SYSTEM_PROMPT)
+const systemPrompt  = ref('')
+// 백엔드 상수를 단일 소스로 사용 (프론트 복사본 없음)
+const defaultPrompt = ref('')
 const promptEditing = ref(false)
 const promptDraft   = ref('')
 const promptSaving  = ref(false)
@@ -183,8 +185,9 @@ async function syncModels() {
 
 // ── 역할 프롬프트 함수 ────────────────────────────────
 async function loadPrompt() {
+  defaultPrompt.value = await aiStore.getDefaultSystemPrompt()
   const p = await aiStore.getSystemPrompt()
-  systemPrompt.value = p || DEFAULT_SYSTEM_PROMPT
+  systemPrompt.value = p || defaultPrompt.value
 }
 
 function startEditPrompt() { promptDraft.value = systemPrompt.value; promptEditing.value = true }
@@ -204,7 +207,7 @@ async function savePrompt() {
 async function resetPrompt() {
   if (!confirm('역할 프롬프트를 기본값으로 초기화하시겠습니까?')) return
   await aiStore.deleteSystemPrompt()
-  systemPrompt.value = DEFAULT_SYSTEM_PROMPT
+  systemPrompt.value = defaultPrompt.value
   promptEditing.value = false
   flash(promptSuccess, '기본값으로 초기화되었습니다.')
 }

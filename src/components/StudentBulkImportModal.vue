@@ -1,5 +1,6 @@
 ﻿<script setup>
 import {computed, ref} from 'vue'
+import {useModalPresence} from '../composables/useModalPresence'
 import {AlertCircle, CheckCircle2, Download, FileSpreadsheet, Upload, X} from 'lucide-vue-next'
 import {Workbook} from 'exceljs'
 import {useStudentStore} from '../stores/student.js'
@@ -276,6 +277,9 @@ async function doImport() {
     importing.value = false
   }
 }
+
+// 떠 있는 동안 타이틀바를 투명 모드로 (자체 오버레이라 BaseModal을 안 거침)
+useModalPresence()
 </script>
 
 <template>

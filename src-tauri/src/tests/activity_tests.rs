@@ -68,7 +68,7 @@ fn test_get_activities_record_count_nonzero() {
 fn test_update_activity_name() {
     let conn = setup_test_db();
     let id = create_activity_impl(&conn, "발표").unwrap();
-    update_activity_impl(&conn, id, "발표(개정)").unwrap();
+    update_activity_impl(&conn, id, "발표(개정)", None, None).unwrap();
 
     let acts = get_activities_impl(&conn).unwrap();
     assert_eq!(acts[0].name, "발표(개정)");
@@ -80,7 +80,7 @@ fn test_update_activity_duplicate_name_error() {
     let id1 = create_activity_impl(&conn, "발표").unwrap();
     let id2 = create_activity_impl(&conn, "보고서").unwrap();
     let _ = id1;
-    let err = update_activity_impl(&conn, id2, "발표").unwrap_err();
+    let err = update_activity_impl(&conn, id2, "발표", None, None).unwrap_err();
     assert!(err.contains("이미 같은 이름의 활동"), "에러 메시지: {err}");
 }
 

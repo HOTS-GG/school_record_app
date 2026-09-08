@@ -151,7 +151,7 @@ async function handleStudentSaved(studentIds) {
       <!-- 섹션 헤더 -->
       <div class="section-header">
         <div>
-          <h2 class="section-title">영역(Area) 관리</h2>
+          <h2 class="section-title">영역 관리</h2>
           <p class="section-desc">자율활동, 진로활동, 동아리활동, 세부능력특기사항 등 생기부 대분류 영역을 설정합니다.</p>
         </div>
         <div class="header-actions">

@@ -7,7 +7,7 @@ const steps = [
   {
     num: 1,
     icon: Users,
-    title: '학생(Students) 등록',
+    title: '학생 등록',
     desc: '학년 · 반 · 번호 · 이름을 등록합니다. 엑셀 파일로 명렬표를 일괄 불러올 수 있습니다.',
     section: 'student',
     color: 'var(--step1-c)',
@@ -17,7 +17,7 @@ const steps = [
   {
     num: 2,
     icon: Layers,
-    title: '영역(Area) 구성',
+    title: '영역 구성',
     desc: '자율활동 · 진로활동 · 동아리활동 등 생기부 영역을 먼저 만들고 바이트 제한을 설정합니다.',
     section: 'area',
     color: 'var(--step2-c)',
@@ -27,7 +27,7 @@ const steps = [
   {
     num: 3,
     icon: BookOpen,
-    title: '활동(Activity) 생성',
+    title: '활동 생성',
     desc: '생기부 각 영역 안에 들어갈 세부 활동을 만들고 해당 영역과 연결합니다.',
     section: 'activity',
     color: 'var(--step3-c)',
@@ -121,9 +121,9 @@ const subjectActivities = [
         <div class="structure-header">
           <h2 class="structure-title">이 프로그램은 어떻게 작동하나요?</h2>
           <p class="structure-sub">
-            생기부의 각 항목을 <strong>영역(Area)</strong>이라고 부릅니다.
+            생기부의 각 항목을 <strong>영역</strong>이라고 부릅니다.
             예를 들어 <strong>진로활동</strong>은 하나의 영역입니다.<br>
-            그 안에 학생이 실제로 참여한 개별 활동들, 즉 <strong>활동(Activity)</strong> 여러 개를 담아 하나의 영역을 완성합니다.
+            그 안에 학생이 실제로 참여한 개별 활동들, 즉 <strong>활동</strong> 여러 개를 담아 하나의 영역을 완성합니다.
           </p>
         </div>
 
@@ -175,22 +175,22 @@ const subjectActivities = [
           <h2 class="usecase-title">담임교사로 활용하기</h2>
         </div>
         <p class="usecase-desc">
-          담임교사는 <strong>자율활동 · 동아리활동 · 진로활동</strong> 3개 영역(Area)의 생기부를 작성합니다.
-          각 영역은 학생이 참여한 개별 행사 혹은 프로그램, 즉 <strong>활동(Activity)</strong>의 기록을
+          담임교사는 <strong>자율활동 · 동아리활동 · 진로활동</strong> 3개 영역의 생기부를 작성합니다.
+          각 영역은 학생이 참여한 개별 행사 혹은 프로그램, 즉 <strong>활동</strong>의 기록을
           하나로 합쳐서 완성됩니다. 지도교사들이 엑셀로 제공한 기재 문장을
-          <strong>가져오기(Import)</strong> 탭으로 불러오면, 활동별 문장이 자동으로 채워지고
+          <strong>가져오기</strong> 탭으로 불러오면, 활동별 문장이 자동으로 채워지고
           합산 바이트를 실시간으로 확인하며 영역 제한을 맞출 수 있습니다.
         </p>
 
         <div class="mapping-bar">
           <div class="mapping-item">
-            <span class="mapping-key mapping-key--area">영역 (Area)</span>
+            <span class="mapping-key mapping-key--area">영역</span>
             <span class="mapping-arrow">→</span>
             <span class="mapping-val">자율활동 · 동아리활동 · 진로활동</span>
           </div>
           <div class="mapping-divider"></div>
           <div class="mapping-item">
-            <span class="mapping-key mapping-key--act">활동 (Activity)</span>
+            <span class="mapping-key mapping-key--act">활동</span>
             <span class="mapping-arrow">→</span>
             <span class="mapping-val">체육대회, 현장체험학습, 진로상담 프로그램 …</span>
           </div>
@@ -212,7 +212,7 @@ const subjectActivities = [
         </div>
 
         <div class="usecase-tip">
-          지도교사에게 기재 문장을 <strong>엑셀 파일</strong>로 받아 <strong>가져오기(Import)</strong> 탭에서
+          지도교사에게 기재 문장을 <strong>엑셀 파일</strong>로 받아 <strong>가져오기</strong> 탭에서
           불러오면 활동별 문장이 자동으로 채워집니다. 영역 바이트를 초과하는 항목은 즉시 표시되므로
           빠르게 파악하고 조절할 수 있습니다.
         </div>
@@ -226,20 +226,20 @@ const subjectActivities = [
         </div>
         <p class="usecase-desc">
           교과교사는 담당 과목의 <strong>세부능력 및 특기사항(세특)</strong>을 작성합니다.
-          세특 하나가 <strong>영역(Area)</strong>이 되고, 수행평가 · 수업태도처럼 세특을 구성하는
-          개별 항목이 <strong>활동(Activity)</strong>이 됩니다. 항목마다 문장을 별도로 작성한 뒤
+          세특 하나가 <strong>영역</strong>이 되고, 수행평가 · 수업태도처럼 세특을 구성하는
+          개별 항목이 <strong>활동</strong>이 됩니다. 항목마다 문장을 별도로 작성한 뒤
           합산 바이트를 확인하며 완성도 높은 세특을 만들 수 있습니다.
         </p>
 
         <div class="mapping-bar">
           <div class="mapping-item">
-            <span class="mapping-key mapping-key--area">영역 (Area)</span>
+            <span class="mapping-key mapping-key--area">영역</span>
             <span class="mapping-arrow">→</span>
             <span class="mapping-val">세부능력 및 특기사항 (과목명)</span>
           </div>
           <div class="mapping-divider"></div>
           <div class="mapping-item">
-            <span class="mapping-key mapping-key--act">활동 (Activity)</span>
+            <span class="mapping-key mapping-key--act">활동</span>
             <span class="mapping-arrow">→</span>
             <span class="mapping-val">수행평가 1, 수행평가 2, 수업 태도 …</span>
           </div>

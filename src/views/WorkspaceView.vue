@@ -1,6 +1,5 @@
 <script setup>
 import {computed, onMounted, ref} from 'vue'
-import {useRouter} from 'vue-router'
 import {getCurrentWindow} from '@tauri-apps/api/window'
 import {LogicalSize} from '@tauri-apps/api/dpi'
 import {useProjectStore} from '../stores/project'
@@ -23,16 +22,10 @@ import SettingsSection from '../sections/SettingsSection.vue'
 import ManualSection from '../sections/ManualSection.vue'
 import SnapshotModal from '../components/SnapshotModal.vue'
 
-const router = useRouter()
 const project = useProjectStore()
 const config = useConfigStore()
 const themeStore = useThemeStore()
-const collapsed = ref(false)
 
-function goHome() {
-  project.closeProject()
-  router.push('/')
-}
 const activeSection = ref('overview')
 const sectionKey = ref(0)
 const showSnapshotModal = ref(false)
@@ -72,12 +65,10 @@ onMounted(async () => {
 <template>
   <div class="workspace">
     <WorkspaceSidebar
-        v-model:collapsed="collapsed"
         :active-section="activeSection"
         :file-path="project.filePath"
         @select="activeSection = $event"
         @openSnapshot="showSnapshotModal = true"
-        @go-home="goHome"
     />
     <main class="workspace-main">
       <component :is="currentSection" :key="sectionKey" @navigate="activeSection = $event"/>
@@ -91,9 +82,11 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* 타이틀바 아래 남은 높이를 App.vue의 flex column에서 받는다 */
 .workspace {
   display: flex;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
   background-color: var(--bg-0);
   overflow: hidden;
 }

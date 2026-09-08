@@ -100,7 +100,7 @@ function handleDelete() {
               @keydown.enter="submit"
           />
           <p class="field-hint">
-            영역(Area) 안에 포함될 세부 활동명입니다.
+            영역 안에 포함될 세부 활동명입니다.
           </p>
         </div>
 

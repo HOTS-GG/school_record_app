@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Sparkles, RefreshCw, Check, Eye, EyeOff, Brain, FileText } from 'lucide-vue-next'
+import { Sparkles, RefreshCw, Check, Eye, EyeOff, Brain, FileText, FileSearch } from 'lucide-vue-next'
 import { useAiStore, AI_MODELS, DEFAULT_MODEL } from '../stores/ai'
 import BaseModal from './BaseModal.vue'
 
@@ -41,6 +41,11 @@ const GEN_BYTES_MIN = 100
 const GEN_BYTES_MAX = 2100
 const GEN_BYTES_STEP = 50
 const genBytes = ref(500)
+
+// 실제 전송된 프롬프트 (결과 화면에서 확인용)
+const sentSystemPrompt = ref('')
+const sentUserMessage  = ref('')
+const showPrompt       = ref(false)
 
 // PDF 분석 자료 포함 여부
 const includePdf = ref(true)
@@ -150,18 +155,13 @@ function buildStudentBehaviorPrompt(b) {
   return lines.length > 1 ? lines.join('\n') : null
 }
 
-function buildRequirements() {
-  const parts = []
-
-  // 행동 프로필 (ON일 때)
-  if (includeBehavior.value) {
-    const bp = buildStudentBehaviorPrompt(props.studentBehavior)
-    if (bp) parts.push(bp)
-  }
-
-  if (requirements.value.trim()) parts.push(requirements.value.trim())
-
-  return parts.length > 0 ? parts.join('\n\n') : null
+// 행동 프로필 / 교사 요구사항 / PDF는 각각 독립 블록으로 전송된다.
+// 여기서는 행동 프로필 본문만 만들고(머리말은 백엔드가 붙임), 요구사항은 원문 그대로 넘긴다.
+function buildBehaviorBlock() {
+  if (!includeBehavior.value) return null
+  const bp = buildStudentBehaviorPrompt(props.studentBehavior)
+  if (!bp) return null
+  return bp.replace(/^\[학생 행동 프로필\]\n/, '')
 }
 
 async function generate() {
@@ -185,14 +185,17 @@ async function generate() {
       areaId:         props.areaId,
       activityId:     props.activityId,
       studentId:      props.studentId,
-      includePdf:     includePdf.value,
-      requirements:   buildRequirements(),
+      includePdf:      includePdf.value,
+      studentBehavior: buildBehaviorBlock(),
+      requirements:    requirements.value.trim() || null,
     })
     result.value           = res.text
     usedModel.value        = res.model
     promptTokens.value     = res.prompt_tokens
     completionTokens.value = res.completion_tokens
     totalTokens.value      = res.total_tokens
+    sentSystemPrompt.value = res.system_prompt
+    sentUserMessage.value  = res.user_message
     step.value = 'result'
   } catch (e) {
     errorMsg.value = String(e)
@@ -366,6 +369,31 @@ function byteLength(str) {
           <span class="usage-tokens">
             입력 {{ promptTokens.toLocaleString() }} + 출력 {{ completionTokens.toLocaleString() }} = 총 {{ totalTokens.toLocaleString() }} 토큰
           </span>
+          <button class="btn-prompt-view" @click="showPrompt = !showPrompt">
+            <FileSearch :size="12"/>
+            {{ showPrompt ? '프롬프트 숨기기' : '전송된 프롬프트 보기' }}
+          </button>
+        </div>
+
+        <!-- 실제 전송된 프롬프트 -->
+        <div v-if="showPrompt" class="prompt-dump">
+          <p class="prompt-dump-hint">
+            AI에게 실제로 전달된 내용입니다. 비어 있는 항목은 자동으로 빠집니다.
+          </p>
+          <div class="prompt-block">
+            <div class="prompt-block-head">
+              <span>시스템 메시지 (지침)</span>
+              <span class="prompt-block-size">{{ sentSystemPrompt.length.toLocaleString() }}자</span>
+            </div>
+            <pre class="prompt-block-body">{{ sentSystemPrompt }}</pre>
+          </div>
+          <div class="prompt-block">
+            <div class="prompt-block-head">
+              <span>사용자 메시지 (이번 건 자료)</span>
+              <span class="prompt-block-size">{{ sentUserMessage.length.toLocaleString() }}자</span>
+            </div>
+            <pre class="prompt-block-body">{{ sentUserMessage }}</pre>
+          </div>
         </div>
       </div>
 
@@ -588,6 +616,36 @@ function byteLength(str) {
 .usage-model  { color: var(--accent-text); font-family: monospace; font-size: 11px; }
 .usage-sep    { color: var(--tx-5); }
 .usage-tokens { color: var(--tx-4); }
+
+/* 전송된 프롬프트 확인 */
+.btn-prompt-view {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: auto; padding: 3px 8px;
+  border: 1px solid var(--bd-1); border-radius: 6px;
+  background: none; color: var(--tx-3);
+  font-size: 11px; cursor: pointer; white-space: nowrap;
+  transition: background-color .15s, color .15s;
+}
+.btn-prompt-view:hover { background-color: rgba(var(--accent-rgb), 0.12); color: var(--accent-text); }
+
+.prompt-dump { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.prompt-dump-hint { margin: 0; font-size: 12px; color: var(--tx-4); }
+.prompt-block { border: 1px solid var(--bd-1); border-radius: 8px; overflow: hidden; }
+.prompt-block-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px; background-color: var(--bg-1);
+  font-size: 12px; font-weight: 600; color: var(--tx-2);
+  border-bottom: 1px solid var(--bd-1);
+}
+.prompt-block-size { font-weight: 400; color: var(--tx-4); }
+.prompt-block-body {
+  margin: 0; padding: 10px;
+  max-height: 260px; overflow: auto;
+  background-color: var(--bg-0);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11.5px; line-height: 1.6; color: var(--tx-3);
+  white-space: pre-wrap; word-break: break-word;
+}
 
 /* 버튼 아이콘 */
 .btn-icon { padding: 10px; background: none; border: 1px solid var(--bd-1); border-radius: 8px; color: var(--tx-3); cursor: pointer; display: flex; align-items: center; }

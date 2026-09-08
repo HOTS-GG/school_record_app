@@ -62,6 +62,7 @@ fn main() {
             delete_area,
             seed_default_areas,
             seed_areas_by_role,
+            get_area_default_prompt,
             set_area_behavior_items,
             // 활동
             get_activities,
@@ -135,6 +136,8 @@ fn main() {
             change_encryption_password,
             // AI 생성
             ai_generate_record,
+            ai_writing_assist,
+            get_default_system_prompt,
             diagnose_api_key,
             test_api_key,
             test_stored_api_key,

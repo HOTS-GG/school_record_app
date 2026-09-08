@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 // ── 색상 계산 유틸 ────────────────────────────────────────────
 
@@ -84,6 +85,18 @@ export const useThemeStore = defineStore('theme', () => {
   const isDark = ref(false)  // 라이트 모드 기본
   const accentHex = ref(DEFAULT_ACCENT)
 
+  /**
+   * 창의 OS 테마를 앱 테마와 맞춘다.
+   * 프레임 없는 창(decorations:false + shadow:true)의 1px 테두리는 DWM이 창의 OS 테마 색으로
+   * 그리므로, 앱 CSS만 다크로 바꾸면 테두리는 밝은 채 남아 다크 모드에서 흰 선처럼 보인다.
+   * 실패해도 시각적 차이일 뿐이라 로그만 남기고 계속 진행한다.
+   */
+  function syncWindowTheme(dark) {
+    getCurrentWindow()
+      .setTheme(dark ? 'dark' : 'light')
+      .catch(e => console.error('창 테마 동기화 실패', e))
+  }
+
   /** CSS 변수를 document.documentElement에 적용 */
   function applyAll(dark, hex) {
     const root = document.documentElement
@@ -96,6 +109,8 @@ export const useThemeStore = defineStore('theme', () => {
     for (const [k, v] of Object.entries(vars)) {
       root.style.setProperty(k, v)
     }
+
+    syncWindowTheme(dark)
   }
 
   /** DB에서 저장된 설정을 읽어 적용 */
