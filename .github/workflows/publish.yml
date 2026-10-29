@@ -51,6 +51,10 @@ jobs:
 
       - name: build
         run: npm run ${{ matrix.script }}
+        env:
+          # 자동 업데이트 서명 키 (저장소 Settings → Secrets and variables → Actions)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: build portable (Windows only)
         if: matrix.platform == 'windows-latest'
@@ -69,6 +73,34 @@ jobs:
           VERSION=${{ steps.version.outputs.VERSION }}
           SRC=$(ls "${{ matrix.bundle_path }}"/*.${{ matrix.artifact_ext }} | head -1)
           cp "$SRC" "school-record-app-${VERSION}-${{ matrix.artifact_name }}-setup.${{ matrix.artifact_ext }}"
+
+      - name: collect updater artifacts (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          mkdir -p updater
+          EXE=$(ls "${{ matrix.bundle_path }}"/*_${VERSION}_x64-setup.exe | head -1)
+          test -f "$EXE.sig" || { echo "updater signature not found: $EXE.sig"; exit 1; }
+          cp "$EXE"     "updater/school-record-app-${VERSION}-windows-x64-setup.exe"
+          cp "$EXE.sig" "updater/school-record-app-${VERSION}-windows-x64-setup.exe.sig"
+
+      - name: collect updater artifacts (macOS)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          mkdir -p updater
+          TGZ=$(ls src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz | head -1)
+          test -f "$TGZ.sig" || { echo "updater signature not found: $TGZ.sig"; exit 1; }
+          cp "$TGZ"     "updater/school-record-app-${VERSION}-macos-universal.app.tar.gz"
+          cp "$TGZ.sig" "updater/school-record-app-${VERSION}-macos-universal.app.tar.gz.sig"
+
+      - name: upload updater artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}-updater
+          path: updater/*
 
       - name: rename portable artifact (Windows only)
         if: matrix.platform == 'windows-latest'
@@ -135,6 +167,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: make latest.json (auto update manifest)
+        run: |
+          node .github/scripts/make-latest-json.mjs "${{ steps.version.outputs.VERSION }}" artifacts
+          # 서명은 latest.json 안에 들어갔으므로 .sig 파일은 올리지 않는다
+          rm -f artifacts/*.sig
+
+      # 초안(draft)으로 만든다. GitHub에서 「Publish release」를 누르는 순간
+      # releases/latest 가 이 버전을 가리키고, 설치된 프로그램들이 업데이트를 받기 시작한다.
       - name: create draft release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

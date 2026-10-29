@@ -12,6 +12,7 @@ pub mod snapshot;
 pub mod student;
 pub mod speller;
 pub mod synonym;
+pub mod updater;
 
 pub use activity::*;
 pub use ai::*;
@@ -27,3 +28,4 @@ pub use snapshot::*;
 pub use student::*;
 pub use speller::*;
 pub use synonym::*;
+pub use updater::*;

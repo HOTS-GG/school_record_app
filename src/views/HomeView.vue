@@ -12,12 +12,16 @@ import {useConfigStore} from '../stores/configStore'
 import {useThemeStore} from '../stores/theme'
 import PasswordModal from '../components/PasswordModal.vue'
 import ReleaseNotesModal from '../components/ReleaseNotesModal.vue'
+import UpdateModal from '../components/UpdateModal.vue'
+import {useUpdaterStore} from '../stores/updater'
 import {getNotesToShow} from '../data/releaseNotes'
 
 const router = useRouter()
 const project = useProjectStore()
 const config = useConfigStore()
 const themeStore = useThemeStore()
+const updater = useUpdaterStore()
+const showUpdateModal = ref(false)
 const error = ref('')
 
 const currentVersion = ref('')
@@ -37,6 +41,9 @@ onMounted(async () => {
     await win.setSize(new LogicalSize(1280, 720))
     await win.center()
   } catch { }
+  // 실행당 한 번, 화면을 막지 않고 새 버전을 확인한다 (실패해도 홈 화면은 그대로)
+  updater.checkForUpdates({silent: true})
+  if (updater.consumePromptOnHome() && updater.hasUpdate) showUpdateModal.value = true
 })
 
 async function handleNew() {
@@ -184,6 +191,21 @@ function handlePasswordCancel() {
           </div>
         </transition>
 
+        <!-- 새 버전 알림 -->
+        <transition name="err">
+          <div v-if="updater.hasUpdate && !updater.dismissed" class="update-box">
+            <span class="update-dot"/>
+            <span class="update-text">새 버전 <b>v{{ updater.latestVersion }}</b>이 있습니다</span>
+            <button class="update-btn" @click="showUpdateModal = true">업데이트</button>
+            <button class="update-dismiss" title="이번에는 숨기기" @click="updater.dismiss()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </transition>
+
         <p class="version">
           v{{ currentVersion }} |
           <button class="license-btn" @click="showLicenseModal = true">Educational Use Only</button>
@@ -200,6 +222,9 @@ function handlePasswordCancel() {
         @submit="handlePasswordSubmit"
         @cancel="handlePasswordCancel"
     />
+
+    <!-- 업데이트 모달 -->
+    <UpdateModal v-if="showUpdateModal" @close="showUpdateModal = false"/>
 
     <!-- 릴리즈 노트 모달 -->
     <ReleaseNotesModal
@@ -474,6 +499,67 @@ function handlePasswordCancel() {
 
 .err-enter-active, .err-leave-active {
   transition: all 0.2s;
+}
+
+/* ── 새 버전 알림 ── */
+.update-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 10px 10px 10px 16px;
+  border-radius: 12px;
+  background-color: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+}
+
+.update-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--accent-hex);
+}
+
+.update-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--tx-2);
+}
+
+.update-text b {
+  color: var(--tx-1);
+}
+
+.update-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--accent-hex);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.update-btn:hover {
+  background-color: var(--accent-hex-hover);
+}
+
+.update-dismiss {
+  display: flex;
+  padding: 6px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--clr-text-hint);
+  cursor: pointer;
+}
+
+.update-dismiss:hover {
+  background-color: var(--bg-hover);
+  color: var(--tx-3);
 }
 
 /* ── 버전 ── */

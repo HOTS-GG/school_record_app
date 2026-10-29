@@ -1,11 +1,44 @@
 ﻿<script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Eye, EyeOff, Pencil, Trash2, Plus, Check, X, RotateCcw, Sun, Moon, Pipette, RefreshCw } from 'lucide-vue-next'
+import { Eye, EyeOff, Pencil, Trash2, Plus, Check, X, RotateCcw, Sun, Moon, Pipette, RefreshCw, ExternalLink, Download } from 'lucide-vue-next'
+import { useRouter } from 'vue-router'
 import { useAiStore, DEFAULT_MODEL, groupModelsByProvider } from '../stores/ai'
 import { useThemeStore, DEFAULT_ACCENT, computeAccentVars, hexToRgb } from '../stores/theme'
+import { useUpdaterStore } from '../stores/updater'
+import { useProjectStore } from '../stores/project'
 
 const aiStore    = useAiStore()
 const themeStore = useThemeStore()
+const updater    = useUpdaterStore()
+const project    = useProjectStore()
+const router     = useRouter()
+
+// ── 프로그램 업데이트 ──────────────────────────────────
+const updateStatusText = computed(() => {
+  const cur = updater.currentVersion ? `v${updater.currentVersion}` : ''
+  const kind = updater.installKind === 'portable' ? ' · 무설치 버전' : ''
+  switch (updater.status) {
+    case 'checking':    return '새 버전을 확인하는 중입니다…'
+    case 'available':
+    case 'downloading':
+    case 'installing':  return `새 버전 v${updater.latestVersion}이 있습니다. (현재 ${cur}${kind})`
+    case 'none':        return `최신 버전입니다. (${cur}${kind})`
+    case 'error':       return `현재 ${cur}${kind} · 새 버전을 확인하지 못했습니다.`
+    default:            return `현재 ${cur}${kind}`
+  }
+})
+const updateStatusClass = computed(() => {
+  if (updater.hasUpdate) return 'key-status--empty'
+  if (updater.status === 'none') return 'key-status--set'
+  return 'key-status--neutral'
+})
+
+// 설치는 학생부 파일을 닫은 초기 화면에서 한다 — 입력 중인 내용이 저장되기 전에 앱이 꺼지지 않도록
+function goHomeForUpdate() {
+  updater.requestPromptOnHome()
+  project.closeProject()
+  router.push('/')
+}
 
 // ── API 키 ────────────────────────────────────────────
 const savedKey     = ref(null)
@@ -67,6 +100,9 @@ const previewStyle  = computed(() => {
 })
 
 onMounted(async () => {
+  if (!updater.currentVersion) {
+    updater.loadEnvironment().catch(e => console.error('[updater] 버전 정보 확인 실패:', e))
+  }
   await Promise.all([loadKey(), loadModel(), loadPrompt(), loadSyncedModels(), loadGenBytes()])
   pickerColor.value = themeStore.accentHex
 })
@@ -508,6 +544,37 @@ function flash(target, msg) {
         </div>
 
       </div>
+
+      <!-- ⑤ 프로그램 업데이트 카드 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-title">프로그램 업데이트</span>
+            <span class="card-desc">프로그램을 시작할 때 새 버전을 자동으로 확인합니다. 설치는 학생부 파일을 닫은 초기 화면에서 진행됩니다.</span>
+          </div>
+        </div>
+
+        <div class="key-status" :class="updateStatusClass">
+          <span class="status-dot" :class="updater.status === 'none' ? 'status-dot--set' : 'status-dot--empty'"/>
+          <span class="status-text">{{ updateStatusText }}</span>
+        </div>
+
+        <div class="card-actions">
+          <button class="btn-secondary" :disabled="updater.busy" @click="updater.checkForUpdates()">
+            <RefreshCw :size="14"/> {{ updater.status === 'checking' ? '확인 중...' : '업데이트 확인' }}
+          </button>
+          <template v-if="updater.hasUpdate">
+            <button v-if="updater.canAutoInstall" class="btn-primary" @click="goHomeForUpdate">
+              <Download :size="15"/> 초기 화면에서 설치
+            </button>
+            <button v-else class="btn-primary" @click="updater.openReleasePage()">
+              <ExternalLink :size="15"/> 내려받기 페이지 열기
+            </button>
+          </template>
+        </div>
+
+        <p v-if="updater.status === 'error'" class="msg-error">{{ updater.error }}</p>
+      </div>
     </div>
   </div>
 </template>
@@ -557,6 +624,7 @@ function flash(target, msg) {
 }
 .key-status--empty { background-color: var(--clr-warn-bg); border: 1px solid var(--clr-warn-bg); }
 .key-status--set   { background-color: var(--clr-green-bg); border: 1px solid var(--clr-green-bg); }
+.key-status--neutral { background-color: var(--bg-1); border: 1px solid var(--bd-1); }
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .status-dot--empty { background-color: var(--clr-warn-text); }

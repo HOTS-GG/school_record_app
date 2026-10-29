@@ -20,6 +20,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // 윈도우 아이콘 설정 (개발 모드에서도 반영)
             if let Some(window) = app.get_webview_window("main") {
@@ -128,6 +130,7 @@ fn main() {
             set_global_config,
             delete_global_config,
             check_and_update_app_version,
+            get_install_kind,
             // 암호화
             get_encryption_status,
             unlock_encryption,
