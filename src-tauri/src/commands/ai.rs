@@ -240,11 +240,7 @@ pub async fn ai_writing_assist(
     }
 
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let text = json["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| "응답 파싱 실패".to_string())?
-        .trim()
-        .to_string();
+    let text = extract_response_text(&json)?;
 
     Ok(AiAssistResult {
         text,
@@ -253,6 +249,47 @@ pub async fn ai_writing_assist(
         completion_tokens: json["usage"]["completion_tokens"].as_i64().unwrap_or(0),
         total_tokens: json["usage"]["total_tokens"].as_i64().unwrap_or(0),
     })
+}
+
+/// OpenRouter 200 응답에서 텍스트 추출.
+/// HTTP 200이라도 본문에 에러가 담기는 경우(크레딧 부족, 모더레이션, 프로바이더 장애)와
+/// content가 문자열이 아닌 경우(콘텐츠 블록 배열, 추론 모델의 null)까지 처리한다.
+pub(crate) fn extract_response_text(json: &serde_json::Value) -> Result<String, String> {
+    if let Some(err) = json.get("error") {
+        let msg = err["message"].as_str().unwrap_or("알 수 없는 오류");
+        return Err(format!("API 오류: {msg}"));
+    }
+    let choice = &json["choices"][0];
+    if let Some(err) = choice.get("error") {
+        let msg = err["message"].as_str().unwrap_or("알 수 없는 오류");
+        return Err(format!("API 오류: {msg}"));
+    }
+
+    let content = &choice["message"]["content"];
+    if let Some(s) = content.as_str() {
+        if !s.trim().is_empty() {
+            return Ok(s.trim().to_string());
+        }
+    }
+    if let Some(arr) = content.as_array() {
+        let joined: String = arr
+            .iter()
+            .filter_map(|block| block["text"].as_str())
+            .collect();
+        if !joined.trim().is_empty() {
+            return Ok(joined.trim().to_string());
+        }
+    }
+
+    // 원인 파악이 가능하도록 응답 원문 일부를 에러에 포함
+    let finish = choice["finish_reason"].as_str().unwrap_or("불명");
+    let mut snippet = json.to_string();
+    if snippet.chars().count() > 300 {
+        snippet = snippet.chars().take(300).collect::<String>() + "…";
+    }
+    Err(format!(
+        "응답 파싱 실패 (finish_reason: {finish}) — 응답: {snippet}"
+    ))
 }
 
 fn read_global_str(conn: &rusqlite::Connection, key: &str) -> Result<Option<String>, String> {
@@ -474,11 +511,7 @@ pub async fn ai_generate_record(
 
         let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
-        text = json["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| "응답 파싱 실패".to_string())?
-            .trim()
-            .to_string();
+        text = extract_response_text(&json)?;
 
         used_model = json["model"].as_str().unwrap_or(&model).to_string();
         prompt_tokens     += json["usage"]["prompt_tokens"].as_i64().unwrap_or(0);
@@ -747,11 +780,7 @@ async fn analyze_one_pdf(
     }
 
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let summary = json["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| format!("응답 파싱 실패 ({name})"))?
-        .trim()
-        .to_string();
+    let summary = extract_response_text(&json).map_err(|e| format!("{e} ({name})"))?;
 
     Ok((name, summary))
 }

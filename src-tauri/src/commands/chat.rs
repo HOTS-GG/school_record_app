@@ -267,7 +267,6 @@ pub async fn ai_chat(
     messages: Vec<ChatMessage>,
     system_prompt: Option<String>,
     model: Option<String>,
-    state: State<'_, DbState>,
     global: State<'_, GlobalConfigState>,
 ) -> Result<AiChatResult, String> {
     let (api_key, resolved_model) = {
@@ -331,11 +330,7 @@ pub async fn ai_chat(
 
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
-    let text = json["choices"][0]["message"]["content"]
-        .as_str()
-        .ok_or_else(|| "응답 파싱 실패".to_string())?
-        .trim()
-        .to_string();
+    let text = crate::commands::ai::extract_response_text(&json)?;
 
     let used_model = json["model"]
         .as_str()
