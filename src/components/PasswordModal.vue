@@ -1,6 +1,7 @@
 ﻿<script setup>
 import {ref, computed, watch} from 'vue'
 import {Lock, Eye, EyeOff, AlertTriangle} from 'lucide-vue-next'
+import {useModalPresence} from '../composables/useModalPresence'
 
 const props = defineProps({
   // 'unlock' | 'setup' | 'change'
@@ -10,6 +11,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['submit', 'cancel'])
+
+// 홈 화면 카드가 뒤로 물러나고 타이틀바가 배경에 녹아들도록 열린 모달로 알린다
+useModalPresence()
 
 const password = ref('')
 const newPassword = ref('')
@@ -182,8 +186,9 @@ function handleCancel() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(4, 6, 12, 0.8);
-  backdrop-filter: blur(6px);
+  background-color: var(--overlay);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
 .modal {

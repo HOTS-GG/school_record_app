@@ -407,7 +407,7 @@ function scrollTo(id) {
     <!-- 좌측 본문 -->
     <div class="manual-content" ref="contentRef">
       <h1 class="manual-title">사용 설명서</h1>
-      <p class="manual-subtitle">학교생활기록부 에디터 사용 안내</p>
+      <p class="manual-subtitle">생기부ON 사용 안내</p>
 
       <div
           v-for="s in sections"

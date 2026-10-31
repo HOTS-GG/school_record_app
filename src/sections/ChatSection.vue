@@ -14,6 +14,7 @@ import {
 } from 'lucide-vue-next'
 import { useAiStore, DEFAULT_MODEL, groupModelsByProvider } from '../stores/ai'
 import { useChatStore } from '../stores/chat'
+import { renderMiniMarkdown } from '../utils/miniMarkdown'
 
 const aiStore = useAiStore()
 const chatStore = useChatStore()
@@ -301,9 +302,7 @@ watch(
           <div v-else class="bubble-row bubble-row--ai">
             <div class="avatar avatar--ai"><Bot :size="14"/></div>
             <div class="bubble-col">
-              <div class="bubble bubble--ai">
-                <span v-html="formatContent(msg.content)"/>
-              </div>
+              <div class="bubble bubble--ai md" v-html="renderMiniMarkdown(msg.content)"/>
               <div v-if="msg.model" class="msg-meta">
                 <span class="meta-model">{{ msg.model }}</span>
                 <span class="meta-sep">|</span>
@@ -701,7 +700,7 @@ watch(
   border-radius: 12px;
   font-size: 14px;
   line-height: 1.75;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .bubble--user {
   background-color: rgba(var(--accent-rgb),.2);
@@ -753,7 +752,7 @@ watch(
   font-size: 11px;
   padding-left: 4px;
 }
-.meta-model  { color: var(--tx-4); font-family: monospace; }
+.meta-model  { color: var(--tx-4); font-family: var(--font-mono); }
 .meta-sep    { color: var(--bg-hover); }
 .meta-tokens { color: var(--tx-5); }
 

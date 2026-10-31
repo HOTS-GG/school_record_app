@@ -467,7 +467,7 @@ function byteLength(str) {
   flex: 1; padding: 10px 14px;
   background-color: var(--bg-2); border: 1px solid var(--bd-1);
   border-radius: 8px; color: var(--tx-1); font-size: 14px;
-  outline: none; font-family: monospace;
+  outline: none; font-family: var(--font-mono);
 }
 .key-input:focus { border-color: rgba(var(--accent-rgb),.5); }
 .key-hint { font-size: 12px; color: var(--tx-4); margin: 0; }
@@ -613,7 +613,7 @@ function byteLength(str) {
 .blocked-desc  { font-size: 13px; color: var(--tx-3); margin: 0; line-height: 1.6; }
 
 .usage-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background-color: var(--bg-0); border: 1px solid var(--bd-1); border-radius: 8px; font-size: 12px; }
-.usage-model  { color: var(--accent-text); font-family: monospace; font-size: 11px; }
+.usage-model  { color: var(--accent-text); font-family: var(--font-mono); font-size: 11px; }
 .usage-sep    { color: var(--tx-5); }
 .usage-tokens { color: var(--tx-4); }
 
@@ -642,9 +642,9 @@ function byteLength(str) {
   margin: 0; padding: 10px;
   max-height: 260px; overflow: auto;
   background-color: var(--bg-0);
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px; line-height: 1.6; color: var(--tx-3);
-  white-space: pre-wrap; word-break: break-word;
+  white-space: pre-wrap; overflow-wrap: break-word;
 }
 
 /* 버튼 아이콘 */

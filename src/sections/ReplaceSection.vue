@@ -31,6 +31,12 @@ const editError = ref('')
 const operationError = ref('')
 const isAdjusting = ref(false)
 
+// 규칙 목록에서 공백을 ␣로 보여 준다. 그대로 두면 「 {2,}」의 앞 공백이나
+// 공백 한 칸으로 바꾸는 규칙이 빈칸처럼 보인다.
+function showSpaces(s) {
+  return s.replace(/ /g, '␣')
+}
+
 function startEdit(rule) {
   editingId.value = rule.id
   editForm.value = {oldText: rule.old_text, newText: rule.new_text, priority: rule.priority, isRegex: rule.is_regex, note: rule.note ?? ''}
@@ -364,7 +370,7 @@ onMounted(async () => {
                 <div class="col-old">
                   <div class="col-old-main">
                     <span v-if="rule.is_regex" class="badge-regex">정규식</span>
-                    <span class="old-text">{{ rule.old_text }}</span>
+                    <span class="old-text">{{ showSpaces(rule.old_text) }}</span>
                     <span
                         v-if="rule.conflicts?.length > 0"
                         class="conflict-badge"
@@ -381,7 +387,7 @@ onMounted(async () => {
                 </div>
 
                 <div class="col-new">
-                  <span class="new-text">{{ rule.new_text || '(빈 문자열)' }}</span>
+                  <span class="new-text">{{ rule.new_text ? showSpaces(rule.new_text) : '(빈 문자열)' }}</span>
                 </div>
 
                 <div class="col-toggle">
@@ -906,7 +912,7 @@ onMounted(async () => {
 
 .old-text {
   color: var(--tx-1);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 20px;
   white-space: pre;
   overflow: hidden;
@@ -915,7 +921,7 @@ onMounted(async () => {
 
 .new-text {
   color: var(--tx-1);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 20px;
   white-space: pre;
   overflow: hidden;

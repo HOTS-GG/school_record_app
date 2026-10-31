@@ -8,15 +8,18 @@ import { renderMiniMarkdown } from '../utils/miniMarkdown'
 const emit = defineEmits(['close'])
 const updater = useUpdaterStore()
 
-// 패치노트(마크다운)를 미니 렌더러가 다루는 형태로 정리:
-// 제목(#)은 굵은 줄로, 구분선·코드 펜스는 지운다
+// 패치노트 첫머리의 문서 제목(# …)과 「v1.3.0 → v1.3.1」 줄은
+// 모달 머리글이 이미 보여 주므로 본문에서 뺀다
 const notesHtml = computed(() => {
-  const text = (updater.notes || '')
-    .split('\n')
-    .filter(l => !/^\s*(---+|```.*)\s*$/.test(l))
-    .map(l => l.replace(/^\s*#{1,6}\s+(.*)$/, '**$1**'))
-    .join('\n')
-    .trim()
+  const lines = (updater.notes || '').split('\n')
+  while (lines.length && (
+    lines[0].trim() === ''
+    || /^\s*#\s+/.test(lines[0])
+    || /^\s*v?[\d.]+\s*(→|->)\s*v?[\d.]+\s*$/.test(lines[0])
+  )) {
+    lines.shift()
+  }
+  const text = lines.join('\n').trim()
   return text ? renderMiniMarkdown(text) : ''
 })
 
@@ -46,7 +49,7 @@ function close() {
       @close="close"
   >
     <div class="upd-body">
-      <div v-if="notesHtml" class="upd-notes" v-html="notesHtml"/>
+      <div v-if="notesHtml" class="upd-notes md" v-html="notesHtml"/>
       <p v-else class="upd-notes-empty">업데이트 내용이 등록되지 않았습니다.</p>
 
       <div v-if="inProgress" class="upd-progress">
@@ -94,33 +97,19 @@ function close() {
 .upd-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 4px 2px;
+  gap: 14px;
+  padding: 20px 24px;
 }
 
 .upd-notes {
-  max-height: 300px;
+  max-height: 320px;
   overflow-y: auto;
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--bd-1);
-  border-radius: 10px;
+  border-radius: 12px;
   background-color: var(--bg-1);
   font-size: 14px;
-  line-height: 1.65;
   color: var(--tx-2);
-  scrollbar-width: thin;
-}
-
-.upd-notes :deep(p) { margin: 0 0 8px; }
-.upd-notes :deep(ul),
-.upd-notes :deep(ol) { margin: 0 0 8px; padding-left: 20px; }
-.upd-notes :deep(li) { margin-bottom: 3px; }
-.upd-notes :deep(strong) { color: var(--tx-1); }
-.upd-notes :deep(code) {
-  font-size: 12.5px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background-color: var(--bg-hover);
 }
 
 .upd-notes-empty {

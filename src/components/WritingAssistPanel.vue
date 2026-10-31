@@ -171,7 +171,7 @@ function onAnswerClick(e) {
       <template v-for="(m, i) in messages" :key="i">
         <div v-if="m.role === 'user'" class="msg msg--user">{{ m.content }}</div>
         <div v-else class="msg msg--ai">
-          <div class="msg-md" :class="{ 'msg-md--applicable': canApply }" @click="onAnswerClick" v-html="renderMiniMarkdown(m.content)"/>
+          <div class="msg-md md" :class="{ 'msg-md--applicable': canApply }" @click="onAnswerClick" v-html="renderMiniMarkdown(m.content)"/>
           <div class="msg-tools">
             <span v-if="canApply" class="msg-tip">굵은 표현을 클릭하면 셀의 선택 부분이 바뀝니다</span>
             <span v-else class="msg-tip">굵은 표현을 클릭하면 복사됩니다</span>
@@ -275,7 +275,7 @@ function onAnswerClick(e) {
   margin: 5px 0 0;
   font-size: 12px; line-height: 1.5; color: var(--tx-3);
   max-height: 66px; overflow-y: auto;
-  white-space: pre-wrap; word-break: break-word;
+  white-space: pre-wrap; overflow-wrap: break-word;
 }
 
 .sel-hint {
@@ -317,7 +317,7 @@ function onAnswerClick(e) {
   padding: 8px 11px;
   border-radius: 12px;
   font-size: 12.5px; line-height: 1.65;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .msg--user {
   align-self: flex-end;
@@ -345,7 +345,7 @@ function onAnswerClick(e) {
 .msg-md :deep(code) {
   padding: 1px 5px; border-radius: 4px;
   background-color: var(--bg-2);
-  font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+  font-family: var(--font-mono); font-size: 11.5px;
 }
 .msg-md :deep(strong) {
   font-weight: 700; color: var(--tx-2);
@@ -374,7 +374,7 @@ function onAnswerClick(e) {
   margin: 0;
   font-size: 11.5px; line-height: 1.5;
   color: var(--clr-red-text, #e03);
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* 입력 */

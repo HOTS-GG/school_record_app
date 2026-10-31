@@ -162,7 +162,6 @@ useModalPresence()
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -172,7 +171,7 @@ useModalPresence()
 .modal {
   background: var(--bg-2);
   border: 1px solid var(--bd-1);
-  border-radius: 14px;
+  border-radius: 16px;
   width: 780px;
   height: 560px;
   max-width: 95vw;

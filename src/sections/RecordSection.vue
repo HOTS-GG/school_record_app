@@ -200,7 +200,9 @@ function getCellSavingState(activityId, studentId) {
 
 function autoResize(el) {
   el.style.height = 'auto'
-  el.style.height = el.scrollHeight + 'px'
+  // border-box라 scrollHeight(테두리 제외)에 위아래 테두리를 더해야 스크롤바가 생기지 않는다
+  const border = el.offsetHeight - el.clientHeight
+  el.style.height = el.scrollHeight + border + 'px'
 }
 
 // 코드로 셀 내용을 바꾼 뒤(AI 생성 적용, 붙여넣기 등) 자동 높이를 다시 맞춘다.
@@ -1094,7 +1096,7 @@ function isNewGroup(students, index) {
 }
 
 .btn-font-step:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--bg-hover);
   color: var(--tx-2);
 }
 
@@ -1207,6 +1209,8 @@ function isNewGroup(students, index) {
 .grid-wrapper {
   flex: 1;
   overflow: auto;
+  /* 마지막 행이 우하단 작성 도우미 버튼(52px + 여백 24px)에 가리지 않도록 */
+  padding-bottom: 88px;
 }
 
 
@@ -1521,9 +1525,9 @@ thead .sticky {
   gap: 3px;
   padding: 2px 7px;
   border-radius: 20px;
-  border: 1px solid rgba(220, 100, 0, 0.4);
-  background: rgba(220, 100, 0, 0.08);
-  color: rgb(180, 80, 0);
+  border: 1px solid rgba(var(--clr-note-rgb), 0.4);
+  background: rgba(var(--clr-note-rgb), 0.08);
+  color: var(--clr-note-strong);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -1531,7 +1535,7 @@ thead .sticky {
   transition: background 0.15s;
 }
 .btn-pdf:hover:not(:disabled) {
-  background: rgba(220, 100, 0, 0.18);
+  background: rgba(var(--clr-note-rgb), 0.18);
 }
 .btn-pdf:disabled {
   opacity: 0.5;
@@ -1545,8 +1549,8 @@ thead .sticky {
   gap: 3px;
   padding: 2px 6px;
   border-radius: 20px;
-  background: rgba(220, 100, 0, 0.12);
-  color: rgb(150, 60, 0);
+  background: rgba(var(--clr-note-rgb), 0.12);
+  color: var(--clr-note-strong);
   font-size: 11px;
   max-width: 120px;
   overflow: hidden;

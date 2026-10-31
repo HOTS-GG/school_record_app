@@ -225,9 +225,10 @@ const navGroups = [
   transition: background-color 0.15s, color 0.15s;
 }
 
+/* 호버는 선택 상태(--active)와 확실히 구분되게 회색 계열로 */
 .nav-item:hover {
-  background-color: rgba(var(--accent-rgb), 0.18);
-  color: var(--accent-text);
+  background-color: var(--bg-hover);
+  color: var(--tx-1);
 }
 
 .nav-item--active {

@@ -631,7 +631,7 @@ function flash(target, msg) {
 .status-dot--set   { background-color: var(--clr-green-text); }
 
 .status-text  { color: var(--tx-3); }
-.status-value { color: var(--tx-1); font-family: monospace; font-size: 13px; flex: 1; word-break: break-all; }
+.status-value { color: var(--tx-1); font-family: var(--font-mono); font-size: 13px; flex: 1; word-break: break-all; }
 
 /* 모델 동기화 바 */
 .sync-bar {
@@ -702,7 +702,7 @@ function flash(target, msg) {
 }
 .prompt-text {
   margin: 0; font-size: 13px; color: var(--tx-3);
-  white-space: pre-wrap; word-break: break-word; font-family: inherit; line-height: 1.7;
+  white-space: pre-wrap; overflow-wrap: break-word; font-family: inherit; line-height: 1.7;
 }
 .prompt-textarea {
   width: 100%; box-sizing: border-box; padding: 12px 14px;
@@ -789,7 +789,7 @@ function flash(target, msg) {
 .key-input {
   flex: 1; padding: 10px 14px; background-color: var(--bg-2);
   border: 1px solid var(--bd-1); border-radius: 8px;
-  color: var(--tx-1); font-size: 14px; font-family: monospace; outline: none;
+  color: var(--tx-1); font-size: 14px; font-family: var(--font-mono); outline: none;
 }
 .key-input:focus { border-color: rgba(var(--accent-rgb), .5); }
 .input-hint { font-size: 12px; color: var(--tx-4); margin: 0; }
@@ -933,7 +933,7 @@ function flash(target, msg) {
 .custom-color-hex {
   font-size: 14px;
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--tx-1);
   text-transform: uppercase;
 }

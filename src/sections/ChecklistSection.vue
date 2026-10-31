@@ -760,7 +760,7 @@ async function doExport() {
 
 .topic-input {
   width: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--bg-1);
   border: 1px solid var(--bd-2);
   border-radius: 6px;
   padding: 5px 10px;
